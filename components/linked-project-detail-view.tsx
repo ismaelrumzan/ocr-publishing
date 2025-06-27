@@ -4,13 +4,13 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { ArrowLeft, Plus, FileText, Trash2, Upload, Link, Unlink } from "lucide-react"
+import { ArrowLeft, Plus, FileText, Upload } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { ProjectOCRScanner } from "@/components/project-ocr-scanner"
 import { EditableTextDisplay } from "@/components/editable-text-display"
 import type { Project, LinkedPageGroup } from "@/types/project"
 import { PageTitleEditor } from "@/components/page-title-editor"
+import { InlineTranslationEditor } from "@/components/inline-translation-editor"
 
 interface LinkedProjectDetailViewProps {
   project: Project
@@ -30,9 +30,6 @@ export function LinkedProjectDetailView({ project, onBack }: LinkedProjectDetail
   const [isLoading, setIsLoading] = useState(true)
   const [ocrScannerOpen, setOcrScannerOpen] = useState(false)
   const [selectedLanguage, setSelectedLanguage] = useState<string>("")
-  const [linkDialogOpen, setLinkDialogOpen] = useState(false)
-  const [selectedRootPageId, setSelectedRootPageId] = useState<string>("")
-  const [availableTranslationPages, setAvailableTranslationPages] = useState<any[]>([])
   const { toast } = useToast()
 
   useEffect(() => {
@@ -44,36 +41,7 @@ export function LinkedProjectDetailView({ project, onBack }: LinkedProjectDetail
       const response = await fetch(`/api/projects/${project.id}`)
       if (response.ok) {
         const data = await response.json()
-
-        // Transform the data to linked page groups format
-        const groups: LinkedPageGroup[] = []
-        const rootPages = data.pagesByLanguage[project.rootLanguage] || []
-
-        for (const rootPage of rootPages) {
-          const translations: Record<string, any> = {}
-
-          // Find linked translation pages
-          if (rootPage.translationPages) {
-            for (const translationPageId of rootPage.translationPages) {
-              // Find the translation page in other languages
-              for (const [lang, pages] of Object.entries(data.pagesByLanguage)) {
-                if (lang !== project.rootLanguage) {
-                  const translationPage = (pages as any[]).find((p) => p.id === translationPageId)
-                  if (translationPage) {
-                    translations[lang] = translationPage
-                  }
-                }
-              }
-            }
-          }
-
-          groups.push({
-            rootPage,
-            translations,
-          })
-        }
-
-        setLinkedPageGroups(groups)
+        setLinkedPageGroups(data.linkedPageGroups || [])
       }
     } catch (error) {
       console.error("Error fetching linked page groups:", error)
@@ -98,131 +66,83 @@ export function LinkedProjectDetailView({ project, onBack }: LinkedProjectDetail
 
   const handleUpdatePageText = async (pageId: string, newText: string) => {
     try {
-      const response = await fetch(`/api/pages/${pageId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ editedText: newText }),
-      })
+      // Check if this is a root page or translation
+      const isTranslation = pageId.includes("_")
 
-      if (response.ok) {
-        await fetchLinkedPageGroups()
-        toast({
-          title: "Success",
-          description: "Page text updated successfully",
+      if (isTranslation) {
+        // Extract page group ID and language from the translation ID
+        const [pageGroupId, language] = pageId.split("_")
+
+        const response = await fetch(`/api/page-groups/${pageGroupId}/translations`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ language, text: newText }),
         })
-      } else {
-        throw new Error("Failed to update page")
-      }
-    } catch (error) {
-      console.error("Error updating page:", error)
-      toast({
-        title: "Error",
-        description: "Failed to update page text",
-        variant: "destructive",
-      })
-    }
-  }
 
-  const handleRemovePage = async (pageId: string, language: string) => {
-    if (!confirm("Are you sure you want to remove this page from the project?")) return
-
-    try {
-      const response = await fetch(`/api/projects/${project.id}/pages`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pageId, language }),
-      })
-
-      if (response.ok) {
-        await fetchLinkedPageGroups()
-        toast({
-          title: "Success",
-          description: "Page removed from project",
-        })
-      }
-    } catch (error) {
-      console.error("Error removing page:", error)
-      toast({
-        title: "Error",
-        description: "Failed to remove page",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const openLinkDialog = (rootPageId: string) => {
-    setSelectedRootPageId(rootPageId)
-    fetchAvailableTranslationPages()
-    setLinkDialogOpen(true)
-  }
-
-  const fetchAvailableTranslationPages = async () => {
-    try {
-      const response = await fetch(`/api/projects/${project.id}`)
-      if (response.ok) {
-        const data = await response.json()
-
-        // Get all unlinked translation pages
-        const unlinkedPages: any[] = []
-        for (const lang of project.translationLanguages) {
-          const pagesInLang = data.pagesByLanguage[lang] || []
-          const unlinkedInLang = pagesInLang.filter((page: any) => !page.rootPageId)
-          unlinkedPages.push(...unlinkedInLang)
+        if (!response.ok) {
+          throw new Error("Failed to update translation")
         }
+      } else {
+        // Update root text
+        const response = await fetch(`/api/page-groups/${pageId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rootText: newText }),
+        })
 
-        setAvailableTranslationPages(unlinkedPages)
+        if (!response.ok) {
+          throw new Error("Failed to update root text")
+        }
       }
+
+      await fetchLinkedPageGroups()
+      toast({
+        title: "Success",
+        description: "Text updated successfully",
+      })
     } catch (error) {
-      console.error("Error fetching available translation pages:", error)
+      console.error("Error updating text:", error)
+      toast({
+        title: "Error",
+        description: "Failed to update text",
+        variant: "destructive",
+      })
     }
   }
 
-  const handleLinkPages = async (translationPageId: string) => {
+  const handleCreateTranslation = async (pageGroupId: string, language: string, translationText: string) => {
     try {
-      const response = await fetch("/api/pages/link", {
+      console.log("Creating translation:", {
+        pageGroupId,
+        language,
+        translationText: translationText.substring(0, 50) + "...",
+      })
+
+      const response = await fetch(`/api/page-groups/${pageGroupId}/translations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rootPageId: selectedRootPageId, translationPageId }),
+        body: JSON.stringify({ language, text: translationText }),
       })
 
-      if (response.ok) {
-        await fetchLinkedPageGroups()
-        setLinkDialogOpen(false)
-        toast({
-          title: "Success",
-          description: "Pages linked successfully",
-        })
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(`Failed to create translation: ${errorData.error || response.statusText}`)
       }
+
+      console.log("Translation created successfully")
+
+      // Refresh the page groups to show the new translation
+      await fetchLinkedPageGroups()
+
+      toast({
+        title: "Success",
+        description: "Translation created successfully",
+      })
     } catch (error) {
-      console.error("Error linking pages:", error)
+      console.error("Error creating translation:", error)
       toast({
         title: "Error",
-        description: "Failed to link pages",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const handleUnlinkPages = async (rootPageId: string, translationPageId: string) => {
-    try {
-      const response = await fetch("/api/pages/link", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rootPageId, translationPageId }),
-      })
-
-      if (response.ok) {
-        await fetchLinkedPageGroups()
-        toast({
-          title: "Success",
-          description: "Pages unlinked successfully",
-        })
-      }
-    } catch (error) {
-      console.error("Error unlinking pages:", error)
-      toast({
-        title: "Error",
-        description: "Failed to unlink pages",
+        description: error instanceof Error ? error.message : "Failed to create translation",
         variant: "destructive",
       })
     }
@@ -234,7 +154,7 @@ export function LinkedProjectDetailView({ project, onBack }: LinkedProjectDetail
 
   const handleUpdatePageTitle = async (pageId: string, newTitle: string) => {
     try {
-      const response = await fetch(`/api/pages/${pageId}`, {
+      const response = await fetch(`/api/page-groups/${pageId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: newTitle }),
@@ -326,7 +246,7 @@ export function LinkedProjectDetailView({ project, onBack }: LinkedProjectDetail
 
       {/* Add Root Page Button */}
       <div className="flex justify-between items-center">
-        <h2 className="text-xl font-semibold">Linked Page Groups</h2>
+        <h2 className="text-xl font-semibold">Page Groups</h2>
         <Button onClick={handleAddRootLanguagePage} className="gap-2">
           <Plus className="w-4 h-4" />
           Add Root Page
@@ -367,25 +287,6 @@ export function LinkedProjectDetailView({ project, onBack }: LinkedProjectDetail
                         onSave={(newTitle) => handleUpdatePageTitle(group.rootPage.id, newTitle)}
                       />
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openLinkDialog(group.rootPage.id)}
-                        className="gap-2"
-                      >
-                        <Link className="w-3 h-3" />
-                        Link Translation
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleRemovePage(group.rootPage.id, group.rootPage.language)}
-                        className="text-destructive hover:text-destructive"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -420,17 +321,6 @@ export function LinkedProjectDetailView({ project, onBack }: LinkedProjectDetail
                               </Badge>
                               {translationPage && <Badge variant="outline">{translationPage.status}</Badge>}
                             </div>
-                            {translationPage && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleUnlinkPages(group.rootPage.id, translationPage.id)}
-                                className="gap-2 text-destructive hover:text-destructive"
-                              >
-                                <Unlink className="w-3 h-3" />
-                                Unlink
-                              </Button>
-                            )}
                           </div>
 
                           {translationPage ? (
@@ -441,9 +331,18 @@ export function LinkedProjectDetailView({ project, onBack }: LinkedProjectDetail
                               onSave={(newText) => handleUpdatePageText(translationPage.id, newText)}
                             />
                           ) : (
-                            <div className="text-center py-6 text-muted-foreground">
-                              <p>No {langInfo?.name} translation linked</p>
-                              <p className="text-sm">Use "Link Translation" to connect a page</p>
+                            <div className="space-y-3">
+                              <div className="text-center py-2 text-muted-foreground">
+                                <p>No {langInfo?.name} translation</p>
+                              </div>
+                              <InlineTranslationEditor
+                                rootPageText={group.rootPage.editedText}
+                                targetLanguage={langCode}
+                                languageInfo={langInfo}
+                                onSave={(translationText) =>
+                                  handleCreateTranslation(group.rootPage.id, langCode, translationText)
+                                }
+                              />
                             </div>
                           )}
                         </div>
@@ -465,50 +364,6 @@ export function LinkedProjectDetailView({ project, onBack }: LinkedProjectDetail
         onClose={() => setOcrScannerOpen(false)}
         onPageSaved={handlePageSaved}
       />
-
-      {/* Link Translation Dialog */}
-      <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Link Translation Page</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">Select a translation page to link with the root page.</p>
-
-            {availableTranslationPages.length === 0 ? (
-              <div className="text-center py-6">
-                <p className="text-muted-foreground">No unlinked translation pages available</p>
-                <p className="text-sm text-muted-foreground">Create translation pages first to link them</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {availableTranslationPages.map((page) => {
-                  const langInfo = getLanguageInfo(page.language)
-                  return (
-                    <div key={page.id} className="flex items-center justify-between p-3 border rounded">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <Badge variant="outline">
-                            {langInfo?.flag} {langInfo?.name}
-                          </Badge>
-                          <span className="font-medium">{page.fileName}</span>
-                        </div>
-                        <p className="text-sm text-muted-foreground line-clamp-2">
-                          {page.editedText.substring(0, 100)}...
-                        </p>
-                      </div>
-                      <Button onClick={() => handleLinkPages(page.id)} size="sm" className="gap-2">
-                        <Link className="w-3 h-3" />
-                        Link
-                      </Button>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

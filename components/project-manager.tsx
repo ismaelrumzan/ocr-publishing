@@ -40,6 +40,8 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
   const { toast } = useToast()
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
 
+  console.log("Dialog state:", { isCreateDialogOpen, isEditDialogOpen, isManagePagesDialogOpen })
+
   // Form state
   const [formData, setFormData] = useState({
     title: "",
@@ -58,7 +60,12 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
       const response = await fetch("/api/projects")
       if (response.ok) {
         const data = await response.json()
-        setProjects(data)
+        setProjects(
+          (data as Project[]).map((p) => ({
+            ...p,
+            pages: p.pages ?? {}, // 🛡️ guarantee pages is an object
+          })),
+        )
       }
     } catch (error) {
       console.error("Error fetching projects:", error)
@@ -108,29 +115,37 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
     }
 
     try {
+      // Now we actually create and save the project when user clicks "Create Project" in the dialog
       const response = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          title: formData.title,
+          description: formData.description,
+          rootLanguage: formData.rootLanguage,
+          translationLanguages: formData.translationLanguages,
+          supportedLanguages: [formData.rootLanguage, ...formData.translationLanguages], // Add this for API compatibility
+        }),
       })
 
       if (response.ok) {
         const newProject = await response.json()
-        setProjects((prev) => [newProject, ...prev])
+        setProjects((prev) => [{ ...newProject, pages: newProject.pages ?? {} }, ...prev])
         setIsCreateDialogOpen(false)
         resetForm()
         toast({
           title: "Success",
-          description: "Project created successfully",
+          description: "Project created and saved to storage successfully",
         })
       } else {
-        throw new Error("Failed to create project")
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to create project")
       }
     } catch (error) {
       console.error("Error creating project:", error)
       toast({
         title: "Error",
-        description: "Failed to create project",
+        description: error instanceof Error ? error.message : "Failed to create project",
         variant: "destructive",
       })
     }
@@ -155,7 +170,9 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
 
       if (response.ok) {
         const updatedProject = await response.json()
-        setProjects((prev) => prev.map((p) => (p.id === updatedProject.id ? updatedProject : p)))
+        setProjects((prev) =>
+          prev.map((p) => (p.id === updatedProject.id ? { ...updatedProject, pages: updatedProject.pages ?? {} } : p)),
+        )
         setIsEditDialogOpen(false)
         setEditingProject(null)
         resetForm()
@@ -286,9 +303,10 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
     return SUPPORTED_LANGUAGES.find((lang) => lang.code === code)
   }
 
-  const getTotalPageCount = (project: Project) => {
-    return Object.values(project.pages).reduce((total, pageIds) => total + pageIds.length, 0)
-  }
+  const getPageCount = (p: Project, lang: string) => p.pages?.[lang]?.length ?? 0
+
+  const getTotalPageCount = (project: Project) =>
+    Object.values(project.pages ?? {}).reduce((total, ids) => total + ids.length, 0)
 
   const handleTranslationLanguageToggle = (languageCode: string) => {
     setFormData((prev) => ({
@@ -317,7 +335,13 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
         <h2 className="text-2xl font-bold">Project Manager</h2>
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="gap-2">
+            <Button
+              className="gap-2"
+              onClick={() => {
+                console.log("Create Project button clicked") // Debug log
+                setIsCreateDialogOpen(true)
+              }}
+            >
               <Plus className="w-4 h-4" />
               Create Project
             </Button>
@@ -395,7 +419,7 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
                 <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={handleCreateProject}>Create Project</Button>
+                <Button onClick={handleCreateProject}>Save Project</Button>
               </div>
             </div>
           </DialogContent>
@@ -472,13 +496,13 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
                         </Badge>
                         {getLanguageInfo(project.rootLanguage)?.flag} {getLanguageInfo(project.rootLanguage)?.name}
                       </span>
-                      <Badge variant="secondary">{project.pages[project.rootLanguage]?.length || 0} pages</Badge>
+                      <Badge variant="secondary">{getPageCount(project, project.rootLanguage)} pages</Badge>
                     </div>
 
                     {/* Translation Languages */}
                     {project.translationLanguages.map((langCode) => {
                       const langInfo = getLanguageInfo(langCode)
-                      const pageCount = project.pages[langCode]?.length || 0
+                      const pageCount = getPageCount(project, langCode)
                       return (
                         <div key={langCode} className="flex items-center justify-between p-2 bg-muted rounded">
                           <span className="flex items-center gap-1">

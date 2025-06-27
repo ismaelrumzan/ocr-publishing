@@ -126,48 +126,72 @@ export function ProjectOCRScanner({ project, language, isOpen, onClose, onPageSa
     const page = pages.find((p) => p.id === pageId)
     if (page) {
       try {
-        // Save page to database
+        console.log("=== Starting page approval process ===")
+        console.log("Page data:", {
+          id: page.id,
+          title: page.title,
+          fileName: page.file.name,
+          language: selectedLanguage.code,
+          projectId: project.id,
+        })
+
+        // Create FormData to send both page data and image file
+        const formData = new FormData()
+        formData.append("fileName", page.file.name)
+        formData.append("title", page.title)
+        formData.append("originalText", page.ocrText)
+        formData.append("editedText", page.editedText)
+        formData.append("language", selectedLanguage.code)
+        formData.append("status", "approved")
+        formData.append("imageFile", page.file)
+
+        console.log("Creating page via /api/pages...")
+        // Save page to database with image
         const response = await fetch("/api/pages", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          body: formData, // Send as FormData instead of JSON
+        })
+
+        if (!response.ok) {
+          const errorText = await response.text()
+          console.error("Failed to create page:", response.status, errorText)
+          throw new Error(`Failed to create page: ${response.status} ${errorText}`)
+        }
+
+        const dbPage = await response.json()
+        console.log("Page created successfully:", dbPage)
+
+        // Add page to project - use the correct API format
+        console.log("Adding page to project...")
+        const addToProjectResponse = await fetch(`/api/projects/${project.id}/pages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
           body: JSON.stringify({
-            fileName: page.file.name,
-            title: page.title,
-            originalText: page.ocrText,
-            editedText: page.editedText,
+            pageId: dbPage.id,
             language: selectedLanguage.code,
-            status: "approved",
           }),
         })
 
-        if (response.ok) {
-          const dbPage = await response.json()
-
-          // Add page to project
-          const addToProjectResponse = await fetch(`/api/projects/${project.id}/pages`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ pageId: dbPage.id, language: selectedLanguage.code }),
-          })
-
-          if (addToProjectResponse.ok) {
-            setPages((prev) => prev.map((p) => (p.id === pageId ? { ...p, status: "approved" as const } : p)))
-            onPageSaved(dbPage.id)
-            toast({
-              title: "Page Saved",
-              description: `Page added to ${project.title}`,
-            })
-          } else {
-            throw new Error("Failed to add page to project")
-          }
-        } else {
-          throw new Error("Failed to save page")
+        if (!addToProjectResponse.ok) {
+          const errorText = await addToProjectResponse.text()
+          console.error("Failed to add page to project:", addToProjectResponse.status, errorText)
+          throw new Error(`Failed to add page to project: ${addToProjectResponse.status} ${errorText}`)
         }
+
+        const addResult = await addToProjectResponse.json()
+        console.log("Page added to project successfully:", addResult)
+
+        setPages((prev) => prev.map((p) => (p.id === pageId ? { ...p, status: "approved" as const } : p)))
+        onPageSaved(dbPage.id)
+        toast({
+          title: "Page Saved",
+          description: `Page and image saved to ${project.title}`,
+        })
       } catch (error) {
         console.error("Error saving page:", error)
         toast({
           title: "Error",
-          description: "Failed to save page",
+          description: error instanceof Error ? error.message : "Failed to save page and image",
           variant: "destructive",
         })
       }
