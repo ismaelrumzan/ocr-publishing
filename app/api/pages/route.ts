@@ -1,21 +1,28 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { projectService } from "@/lib/project-service"
-import type { Page } from "@/lib/types"
+import type { Page } from "@/types/project"
 
-/* ----------  POST /api/pages  ---------- */
 export async function POST(request: NextRequest) {
   try {
     console.log("=== /api/pages POST called ===")
 
-    // If the header is missing, default to treating it as multipart.
     const contentType = (request.headers.get("content-type") || "").toLowerCase()
     const isJson = contentType.includes("application/json")
 
     let pageData: any = {}
 
     if (!isJson) {
-      /* ---------- MULTIPART FORM DATA ---------- */
+      // Handle FormData (with image)
       const formData = await request.formData()
+
+      console.log("FormData entries:")
+      for (const [key, value] of formData.entries()) {
+        if (value instanceof File) {
+          console.log(`${key}: File(${value.name}, ${value.size} bytes)`)
+        } else {
+          console.log(`${key}: ${value}`)
+        }
+      }
 
       pageData = {
         fileName: formData.get("fileName")?.toString() ?? "untitled",
@@ -25,30 +32,40 @@ export async function POST(request: NextRequest) {
         language: formData.get("language")?.toString() ?? "eng",
         status: (formData.get("status")?.toString() ?? "approved") as Page["status"],
         imageFile: formData.get("imageFile") as File | null,
+        projectId: formData.get("projectId")?.toString(),
       }
 
       if (!pageData.imageFile) {
         return NextResponse.json({ error: "Image file is required." }, { status: 400 })
       }
     } else {
-      /* ---------- APPLICATION/JSON ---------- */
+      // Handle JSON
       pageData = await request.json()
+      console.log("JSON data:", pageData)
 
       if (!pageData.language || !pageData.editedText) {
         return NextResponse.json({ error: "language and editedText are required." }, { status: 400 })
       }
     }
 
-    console.log("Creating page with:", {
+    console.log("Creating page with data:", {
       ...pageData,
       imageFile: pageData.imageFile ? `File(${pageData.imageFile.name})` : "none",
     })
 
     const page = await projectService.createPage(pageData)
+    console.log("Page created successfully:", {
+      id: page.id,
+      title: page.title,
+      fileName: page.fileName,
+      language: page.language,
+    })
 
-    // If this JSON body included a projectId, link immediately
-    if (isJson && pageData.projectId) {
-      await projectService.addPageToProject(pageData.projectId, page.id, pageData.language)
+    // If projectId is provided, add the page to that project
+    if (pageData.projectId) {
+      console.log(`Adding page ${page.id} to project ${pageData.projectId}`)
+      const success = await projectService.addPageToProject(pageData.projectId, page.id, pageData.language)
+      console.log(`Page linking result: ${success}`)
     }
 
     return NextResponse.json(page, { status: 201 })
@@ -61,9 +78,13 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const pages = await projectService.getPages()
+    const { searchParams } = new URL(request.url)
+    const language = searchParams.get("language")
+
+    const pages = language ? await projectService.getPagesByLanguage(language) : await projectService.getPages()
+
     return NextResponse.json(pages)
   } catch (error) {
     console.error("Error fetching pages:", error)

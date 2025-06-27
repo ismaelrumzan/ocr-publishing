@@ -56,11 +56,14 @@ export function LinkedProjectDetailView({ project, onBack }: LinkedProjectDetail
   }
 
   const handleAddRootLanguagePage = () => {
+    console.log("Add root page clicked, project:", project)
+    console.log("Root language:", project.rootLanguage)
     setSelectedLanguage(project.rootLanguage)
     setOcrScannerOpen(true)
   }
 
   const handlePageSaved = () => {
+    console.log("Page saved, refreshing page groups")
     fetchLinkedPageGroups()
   }
 
@@ -219,7 +222,7 @@ export function LinkedProjectDetailView({ project, onBack }: LinkedProjectDetail
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">Translation Languages:</span>
                 <div className="flex gap-1">
-                  {project.translationLanguages.map((langCode) => {
+                  {(project.translationLanguages || []).map((langCode) => {
                     const langInfo = getLanguageInfo(langCode)
                     return (
                       <Badge key={langCode} variant="outline" className="text-xs">
@@ -308,7 +311,7 @@ export function LinkedProjectDetailView({ project, onBack }: LinkedProjectDetail
 
                   {/* Translation Pages */}
                   <div className="space-y-3">
-                    {project.translationLanguages.map((langCode) => {
+                    {(project.translationLanguages || []).map((langCode) => {
                       const langInfo = getLanguageInfo(langCode)
                       const translationPage = group.translations[langCode]
 
@@ -358,8 +361,9 @@ export function LinkedProjectDetailView({ project, onBack }: LinkedProjectDetail
 
       {/* OCR Scanner Dialog */}
       <ProjectOCRScanner
-        project={project}
-        language={selectedLanguage}
+        projectId={project.id}
+        rootLanguage={project.rootLanguage}
+        translationLanguages={project.translationLanguages || []}
         isOpen={ocrScannerOpen}
         onClose={() => setOcrScannerOpen(false)}
         onPageSaved={handlePageSaved}

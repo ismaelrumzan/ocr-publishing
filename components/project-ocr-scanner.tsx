@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -22,13 +21,13 @@ interface ProcessedPage {
   imageUrl: string
   ocrText: string
   editedText: string
-  title: string // Add title field
+  title: string
   status: "processing" | "completed" | "approved"
   progress: number
 }
 
 interface ProjectOCRScannerProps {
-  project: Project
+  project?: Project | null
   language: string
   isOpen: boolean
   onClose: () => void
@@ -47,8 +46,17 @@ export function ProjectOCRScanner({ project, language, isOpen, onClose, onPageSa
   const [pages, setPages] = useState<ProcessedPage[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
   const { toast } = useToast()
-
   const selectedLanguage = SUPPORTED_LANGUAGES.find((lang) => lang.code === language) || SUPPORTED_LANGUAGES[1]
+
+  // ────────────────────────────────────────────────
+  // Prevent runtime errors if the parent renders the
+  // scanner before the project object is available.
+  // ────────────────────────────────────────────────
+  if (!project) {
+    // Render nothing (or a tiny placeholder) until the
+    // project prop is actually supplied by the caller.
+    return null
+  }
 
   const handleFileUpload = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -126,15 +134,6 @@ export function ProjectOCRScanner({ project, language, isOpen, onClose, onPageSa
     const page = pages.find((p) => p.id === pageId)
     if (page) {
       try {
-        console.log("=== Starting page approval process ===")
-        console.log("Page data:", {
-          id: page.id,
-          title: page.title,
-          fileName: page.file.name,
-          language: selectedLanguage.code,
-          projectId: project.id,
-        })
-
         // Create FormData to send both page data and image file
         const formData = new FormData()
         formData.append("fileName", page.file.name)
@@ -144,54 +143,31 @@ export function ProjectOCRScanner({ project, language, isOpen, onClose, onPageSa
         formData.append("language", selectedLanguage.code)
         formData.append("status", "approved")
         formData.append("imageFile", page.file)
+        formData.append("projectId", project.id)
 
-        console.log("Creating page via /api/pages...")
         // Save page to database with image
         const response = await fetch("/api/pages", {
           method: "POST",
-          body: formData, // Send as FormData instead of JSON
+          body: formData,
         })
 
-        if (!response.ok) {
-          const errorText = await response.text()
-          console.error("Failed to create page:", response.status, errorText)
-          throw new Error(`Failed to create page: ${response.status} ${errorText}`)
+        if (response.ok) {
+          const dbPage = await response.json()
+          setPages((prev) => prev.map((p) => (p.id === pageId ? { ...p, status: "approved" as const } : p)))
+          onPageSaved(dbPage.id)
+          toast({
+            title: "Page Saved",
+            description: `Page and image saved to ${project.title}`,
+          })
+        } else {
+          const errorData = await response.json()
+          throw new Error(errorData.error || "Failed to save page")
         }
-
-        const dbPage = await response.json()
-        console.log("Page created successfully:", dbPage)
-
-        // Add page to project - use the correct API format
-        console.log("Adding page to project...")
-        const addToProjectResponse = await fetch(`/api/projects/${project.id}/pages`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({
-            pageId: dbPage.id,
-            language: selectedLanguage.code,
-          }),
-        })
-
-        if (!addToProjectResponse.ok) {
-          const errorText = await addToProjectResponse.text()
-          console.error("Failed to add page to project:", addToProjectResponse.status, errorText)
-          throw new Error(`Failed to add page to project: ${addToProjectResponse.status} ${errorText}`)
-        }
-
-        const addResult = await addToProjectResponse.json()
-        console.log("Page added to project successfully:", addResult)
-
-        setPages((prev) => prev.map((p) => (p.id === pageId ? { ...p, status: "approved" as const } : p)))
-        onPageSaved(dbPage.id)
-        toast({
-          title: "Page Saved",
-          description: `Page and image saved to ${project.title}`,
-        })
       } catch (error) {
         console.error("Error saving page:", error)
         toast({
           title: "Error",
-          description: error instanceof Error ? error.message : "Failed to save page and image",
+          description: "Failed to save page and image",
           variant: "destructive",
         })
       }

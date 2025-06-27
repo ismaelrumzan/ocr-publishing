@@ -1,19 +1,12 @@
 /**
- * Project service
+ * Project service - Full Neon database implementation
  */
 
 import { put, del } from "@vercel/blob"
 import { neon } from "@neondatabase/serverless"
-import type {
-  Project,
-  PageGroup,
-  Page, // ← legacy page shape
-  CreateProjectData,
-  UpdateProjectData,
-  LinkedPageGroup,
-} from "@/types/project"
+import type { Project, PageGroup, Page, CreateProjectData, UpdateProjectData, LinkedPageGroup } from "@/types/project"
 
-// utils
+// Utils
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const slug = (str: string) =>
@@ -33,7 +26,7 @@ let isInitialized = false
 const sql = neon(process.env.DATABASE_URL!)
 
 export class ProjectService {
-  // Initialize the service
+  // Initialize the service and create tables
   async initialize(): Promise<void> {
     if (isInitialized) {
       console.log("Project service already initialized")
@@ -43,6 +36,9 @@ export class ProjectService {
     try {
       console.log("Initializing project service with Neon database...")
 
+      // Create tables if they don't exist
+      await this.createTables()
+
       // Test database connection
       const result = await sql`SELECT NOW() as current_time`
       console.log("Database connection successful:", result[0].current_time)
@@ -51,23 +47,78 @@ export class ProjectService {
       console.log("✅ Project service initialized successfully")
     } catch (error) {
       console.error("Failed to initialize project service:", error)
-      // Mark as initialized anyway to prevent infinite retry loops
-      isInitialized = true
+      throw error
+    }
+  }
+
+  private async createTables(): Promise<void> {
+    try {
+      // Create projects table
+      await sql`
+        CREATE TABLE IF NOT EXISTS projects (
+          id VARCHAR(255) PRIMARY KEY,
+          title VARCHAR(500) NOT NULL,
+          description TEXT,
+          file_name VARCHAR(255) NOT NULL,
+          root_language VARCHAR(10) NOT NULL,
+          translation_languages TEXT[] NOT NULL,
+          created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+          updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+          status VARCHAR(50) NOT NULL DEFAULT 'active'
+        )
+      `
+
+      // Create page_groups table
+      await sql`
+        CREATE TABLE IF NOT EXISTS page_groups (
+          id VARCHAR(255) PRIMARY KEY,
+          title VARCHAR(500) NOT NULL,
+          file_name VARCHAR(255) NOT NULL,
+          root_language VARCHAR(10) NOT NULL,
+          root_text TEXT NOT NULL,
+          translations JSONB NOT NULL DEFAULT '{}',
+          image_url TEXT,
+          image_blob_id VARCHAR(255),
+          created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+          updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+          status VARCHAR(50) NOT NULL DEFAULT 'draft'
+        )
+      `
+
+      // Create project_page_groups junction table
+      await sql`
+        CREATE TABLE IF NOT EXISTS project_page_groups (
+          project_id VARCHAR(255) NOT NULL,
+          page_group_id VARCHAR(255) NOT NULL,
+          created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (project_id, page_group_id),
+          FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+          FOREIGN KEY (page_group_id) REFERENCES page_groups(id) ON DELETE CASCADE
+        )
+      `
+
+      console.log("Database tables created/verified successfully")
+    } catch (error) {
+      console.error("Failed to create database tables:", error)
+      throw error
     }
   }
 
   // Project operations
   async createProject(data: CreateProjectData): Promise<Project> {
+    await this.initialize()
     await delay(100)
 
-    // Derive a safe, unique file name if none provided
     const fileName =
       data.fileName && data.fileName.trim().length > 0 ? slug(data.fileName) : `${slug(data.title)}-${Date.now()}`
 
     const project: Project = {
       id: `project_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      ...data,
-      fileName, // ✅ guaranteed non-null
+      title: data.title,
+      description: data.description || "",
+      fileName,
+      rootLanguage: data.rootLanguage,
+      translationLanguages: data.translationLanguages,
       pageGroups: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -80,7 +131,7 @@ export class ProjectService {
           id, title, description, file_name, root_language, 
           translation_languages, created_at, updated_at, status
         ) VALUES (
-          ${project.id}, ${project.title}, ${project.description || ""}, 
+          ${project.id}, ${project.title}, ${project.description}, 
           ${project.fileName}, ${project.rootLanguage}, 
           ${project.translationLanguages}, ${project.createdAt}, 
           ${project.updatedAt}, ${project.status}
@@ -89,21 +140,15 @@ export class ProjectService {
 
       projectCache.set(project.id, project)
       console.log("Project saved to database:", project.id)
+      return project
     } catch (error) {
       console.error("Failed to save project to database:", error)
       throw error
     }
-
-    return project
   }
 
   async getProjects(): Promise<Project[]> {
-    // Ensure we're initialized before returning projects
-    if (!isInitialized) {
-      console.log("Service not initialized, initializing now...")
-      await this.initialize()
-    }
-
+    await this.initialize()
     await delay(100)
 
     try {
@@ -120,21 +165,18 @@ export class ProjectService {
         ORDER BY p.created_at DESC
       `
 
-      const projects: Project[] = rows.map((row: any) => {
-        const project: Project = {
-          id: row.id,
-          title: row.title,
-          description: row.description,
-          fileName: row.file_name,
-          rootLanguage: row.root_language,
-          translationLanguages: row.translation_languages,
-          pageGroups: row.page_groups || [],
-          createdAt: row.created_at.toISOString?.() ?? row.created_at,
-          updatedAt: row.updated_at.toISOString?.() ?? row.updated_at,
-          status: row.status,
-        }
-        return project
-      })
+      const projects: Project[] = rows.map((row: any) => ({
+        id: row.id,
+        title: row.title,
+        description: row.description || "",
+        fileName: row.file_name,
+        rootLanguage: row.root_language,
+        translationLanguages: row.translation_languages || [],
+        pageGroups: row.page_groups || [],
+        createdAt: row.created_at.toISOString?.() ?? row.created_at,
+        updatedAt: row.updated_at.toISOString?.() ?? row.updated_at,
+        status: row.status,
+      }))
 
       // Update cache
       projects.forEach((project) => projectCache.set(project.id, project))
@@ -143,21 +185,12 @@ export class ProjectService {
       return projects
     } catch (error) {
       console.error("Failed to load projects from database:", error)
-      // Fallback to cache only
-      const cacheProjects = Array.from(projectCache.values()).sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      )
-      console.log(`Returning ${cacheProjects.length} projects from cache`)
-      return cacheProjects
+      return []
     }
   }
 
   async getProject(id: string): Promise<Project | null> {
-    // Ensure we're initialized before loading project
-    if (!isInitialized) {
-      await this.initialize()
-    }
-
+    await this.initialize()
     await delay(50)
 
     try {
@@ -189,10 +222,10 @@ export class ProjectService {
       const project: Project = {
         id: row.id,
         title: row.title,
-        description: row.description,
+        description: row.description || "",
         fileName: row.file_name,
         rootLanguage: row.root_language,
-        translationLanguages: row.translation_languages,
+        translationLanguages: row.translation_languages || [],
         pageGroups: row.page_groups || [],
         createdAt: row.created_at.toISOString?.() ?? row.created_at,
         updatedAt: row.updated_at.toISOString?.() ?? row.updated_at,
@@ -201,7 +234,7 @@ export class ProjectService {
 
       // Cache the project
       projectCache.set(id, project)
-      console.log(`Project ${id} loaded from database:`, project.name)
+      console.log(`Project ${id} loaded from database`)
       return project
     } catch (error) {
       console.error(`Failed to load project ${id} from database:`, error)
@@ -210,6 +243,7 @@ export class ProjectService {
   }
 
   async updateProject(id: string, data: UpdateProjectData): Promise<Project | null> {
+    await this.initialize()
     await delay(100)
 
     try {
@@ -235,6 +269,7 @@ export class ProjectService {
   }
 
   async deleteProject(id: string): Promise<boolean> {
+    await this.initialize()
     await delay(100)
 
     try {
@@ -264,6 +299,7 @@ export class ProjectService {
   async createPageGroup(
     data: Omit<PageGroup, "id" | "createdAt" | "updatedAt"> & { imageFile?: File },
   ): Promise<PageGroup> {
+    await this.initialize()
     await delay(100)
 
     let imageUrl: string | undefined
@@ -280,7 +316,7 @@ export class ProjectService {
           },
         )
         imageUrl = blob.url
-        imageBlobId = blob.pathname.split("/").pop() // Extract ID from pathname
+        imageBlobId = blob.pathname.split("/").pop()
       } catch (error) {
         console.error("Failed to upload image to blob storage:", error)
         // Continue without image if upload fails
@@ -289,15 +325,17 @@ export class ProjectService {
 
     const pageGroup: PageGroup = {
       id: `pagegroup_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      ...data,
+      title: data.title,
+      fileName: data.fileName,
+      rootLanguage: data.rootLanguage,
+      rootText: data.rootText,
+      translations: data.translations || {},
       imageUrl,
       imageBlobId,
+      status: data.status || "draft",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
-
-    // Remove imageFile from the page group object as it's not part of the PageGroup type
-    delete (pageGroup as any).imageFile
 
     try {
       await sql`
@@ -316,26 +354,20 @@ export class ProjectService {
       // Cache the page group
       pageGroupCache.set(pageGroup.id, pageGroup)
       console.log("Page group saved to database:", pageGroup.id)
+      return pageGroup
     } catch (error) {
       console.error("Failed to save page group to database:", error)
       throw error
     }
-
-    return pageGroup
   }
 
-  /**
-   * Legacy helper so /api/pages (and older UI code) keeps working.
-   * We simply create a brand-new PageGroup whose root language equals
-   * the requested page language and return a Page-shaped object.
-   */
   async createPage(data: Omit<Page, "id" | "createdAt" | "updatedAt"> & { imageFile?: File }): Promise<Page> {
     const pg = await this.createPageGroup({
       title: data.title ?? data.fileName ?? "Untitled",
       fileName: data.fileName ?? slug(data.title ?? "untitled"),
       rootLanguage: data.language,
       rootText: data.editedText,
-      translations: {}, // none yet
+      translations: {},
       status: data.status ?? "approved",
       imageFile: data.imageFile,
     })
@@ -355,6 +387,7 @@ export class ProjectService {
   }
 
   async updatePageGroup(id: string, data: Partial<PageGroup>): Promise<PageGroup | null> {
+    await this.initialize()
     await delay(100)
 
     try {
@@ -373,7 +406,7 @@ export class ProjectService {
 
       // Clear cache and reload
       pageGroupCache.delete(id)
-      return await this.loadPageGroupFromBlob(id) // Reuse the method name for consistency
+      return await this.loadPageGroupFromBlob(id)
     } catch (error) {
       console.error(`Failed to update page group ${id}:`, error)
       return null
@@ -381,6 +414,7 @@ export class ProjectService {
   }
 
   async deletePageGroup(id: string): Promise<boolean> {
+    await this.initialize()
     await delay(100)
 
     try {
@@ -409,6 +443,8 @@ export class ProjectService {
   }
 
   async loadPageGroupFromBlob(id: string): Promise<PageGroup | null> {
+    await this.initialize()
+
     try {
       // Check cache first
       if (pageGroupCache.has(id)) {
@@ -434,11 +470,13 @@ export class ProjectService {
         imageUrl: row.image_url,
         imageBlobId: row.image_blob_id,
         status: row.status,
+        createdAt: row.created_at.toISOString?.() ?? row.created_at,
+        updatedAt: row.updated_at.toISOString?.() ?? row.updated_at,
       }
 
       // Cache the page group
       pageGroupCache.set(id, pageGroup)
-      console.log(`Page group ${id} loaded from database:`, pageGroup.fileName)
+      console.log(`Page group ${id} loaded from database`)
       return pageGroup
     } catch (error) {
       console.error(`Failed to load page group ${id} from database:`, error)
@@ -447,6 +485,7 @@ export class ProjectService {
   }
 
   async addPageGroupToProject(projectId: string, pageGroupId: string): Promise<boolean> {
+    await this.initialize()
     await delay(50)
 
     try {
@@ -475,6 +514,7 @@ export class ProjectService {
   }
 
   async removePageGroupFromProject(projectId: string, pageGroupId: string): Promise<boolean> {
+    await this.initialize()
     await delay(50)
 
     try {
@@ -501,21 +541,11 @@ export class ProjectService {
     }
   }
 
-  /* -----------------------------------------------------------------
-   * Legacy wrappers ― keep old API routes working
-   * -----------------------------------------------------------------*/
-
-  /**
-   * @deprecated  Use addPageGroupToProject.  Kept for older /api/projects/[id]/pages route.
-   */
+  // Legacy wrappers
   async addPageToProject(projectId: string, pageId: string, _language: string): Promise<boolean> {
-    // pageId === pageGroupId in the new model
     return this.addPageGroupToProject(projectId, pageId)
   }
 
-  /**
-   * @deprecated  Use removePageGroupFromProject.  Kept for older /api/projects/[id]/pages route.
-   */
   async removePageFromProject(projectId: string, pageId: string, _language: string): Promise<boolean> {
     return this.removePageGroupFromProject(projectId, pageId)
   }
@@ -544,13 +574,11 @@ export class ProjectService {
     const project = await this.getProject(projectId)
     if (!project) return null
 
-    // Get all page groups for the project
     const linkedPageGroups: LinkedPageGroup[] = []
 
     for (const pageGroupId of project.pageGroups) {
       const pageGroup = await this.loadPageGroupFromBlob(pageGroupId)
       if (pageGroup) {
-        // Convert PageGroup to LinkedPageGroup format for compatibility
         const rootPage = {
           id: pageGroup.id,
           title: pageGroup.title,
@@ -580,10 +608,6 @@ export class ProjectService {
     return { project, linkedPageGroups }
   }
 
-  /**
-   * Back-compat helper — returns the old `{ project, pagesByLanguage }`
-   * shape expected by `/api/projects/[id]`.
-   */
   async getProjectWithPages(
     projectId: string,
   ): Promise<{ project: Project; pagesByLanguage: Record<string, any[]> } | null> {
@@ -592,7 +616,6 @@ export class ProjectService {
     const project = await this.getProject(projectId)
     if (!project) return null
 
-    // Build pagesByLanguage from pageGroups
     const pagesByLanguage: Record<string, any[]> = {}
 
     for (const pgId of project.pageGroups) {
@@ -629,8 +652,9 @@ export class ProjectService {
     return { project, pagesByLanguage }
   }
 
-  // Legacy compatibility methods
   async getPages(): Promise<any[]> {
+    await this.initialize()
+
     try {
       const rows = await sql`
         SELECT * FROM page_groups ORDER BY created_at DESC
@@ -690,8 +714,100 @@ export class ProjectService {
     }
   }
 
+  async getPagesByLanguage(language: string): Promise<any[]> {
+    const allPages = await this.getPages()
+    return allPages.filter((page) => page.language === language)
+  }
+
+  async loadPageFromBlob(id: string): Promise<Page | null> {
+    // Check if this is a translation page ID (contains underscore)
+    if (id.includes("_")) {
+      const [pageGroupId, language] = id.split("_")
+      const pageGroup = await this.loadPageGroupFromBlob(pageGroupId)
+
+      if (!pageGroup || !pageGroup.translations[language]) {
+        return null
+      }
+
+      return {
+        id,
+        fileName: `${pageGroup.fileName}_${language}`,
+        title: `${pageGroup.title} (${language})`,
+        originalText: pageGroup.translations[language],
+        editedText: pageGroup.translations[language],
+        language,
+        status: pageGroup.status,
+        rootPageId: pageGroup.id,
+        createdAt: pageGroup.createdAt,
+        updatedAt: pageGroup.updatedAt,
+      }
+    }
+
+    // Regular page group
+    const pageGroup = await this.loadPageGroupFromBlob(id)
+    if (!pageGroup) return null
+
+    return {
+      id: pageGroup.id,
+      fileName: pageGroup.fileName,
+      title: pageGroup.title,
+      originalText: pageGroup.rootText,
+      editedText: pageGroup.rootText,
+      language: pageGroup.rootLanguage,
+      status: pageGroup.status,
+      imageUrl: pageGroup.imageUrl,
+      createdAt: pageGroup.createdAt,
+      updatedAt: pageGroup.updatedAt,
+    }
+  }
+
+  async updatePage(id: string, data: Partial<Page>): Promise<Page | null> {
+    // Check if this is a translation page ID
+    if (id.includes("_")) {
+      const [pageGroupId, language] = id.split("_")
+      const pageGroup = await this.loadPageGroupFromBlob(pageGroupId)
+
+      if (!pageGroup) return null
+
+      if (data.editedText) {
+        pageGroup.translations[language] = data.editedText
+        await this.updatePageGroup(pageGroupId, { translations: pageGroup.translations })
+      }
+
+      return this.loadPageFromBlob(id)
+    }
+
+    // Regular page group
+    const updateData: Partial<PageGroup> = {}
+    if (data.title) updateData.title = data.title
+    if (data.editedText) updateData.rootText = data.editedText
+    if (data.status) updateData.status = data.status
+
+    await this.updatePageGroup(id, updateData)
+    return this.loadPageFromBlob(id)
+  }
+
+  async deletePage(id: string): Promise<boolean> {
+    // Check if this is a translation page ID
+    if (id.includes("_")) {
+      const [pageGroupId, language] = id.split("_")
+      const pageGroup = await this.loadPageGroupFromBlob(pageGroupId)
+
+      if (!pageGroup) return false
+
+      delete pageGroup.translations[language]
+      await this.updatePageGroup(pageGroupId, { translations: pageGroup.translations })
+      return true
+    }
+
+    // Regular page group
+    return this.deletePageGroup(id)
+  }
+
   // Utility methods for data management
   async initializeFromSampleData(): Promise<void> {
+    await this.initialize()
+
     try {
       // Check if we already have data in database
       const existingProjects = await sql`SELECT COUNT(*) as count FROM projects`
@@ -732,10 +848,13 @@ export class ProjectService {
       console.log("Sample data initialized successfully")
     } catch (error) {
       console.error("Failed to initialize sample data:", error)
+      throw error
     }
   }
 
   async clearAllData(): Promise<void> {
+    await this.initialize()
+
     try {
       // Delete all data (cascade will handle relationships)
       await sql`DELETE FROM projects`
@@ -745,12 +864,10 @@ export class ProjectService {
       projectCache.clear()
       pageGroupCache.clear()
 
-      // Reset initialization flag
-      isInitialized = false
-
       console.log("All data cleared from database")
     } catch (error) {
       console.error("Failed to clear data:", error)
+      throw error
     }
   }
 }
