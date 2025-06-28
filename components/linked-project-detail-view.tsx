@@ -63,9 +63,12 @@ export function LinkedProjectDetailView({
 
   const fetchLinkedPageGroups = async () => {
     try {
+      console.log("Fetching linked page groups for project:", project.id);
       const response = await fetch(`/api/projects/${project.id}`);
       if (response.ok) {
         const data = await response.json();
+        console.log("API response data:", data);
+        console.log("Linked page groups:", data.linkedPageGroups);
         setLinkedPageGroups(data.linkedPageGroups || []);
       }
     } catch (error) {
@@ -87,9 +90,21 @@ export function LinkedProjectDetailView({
     setOcrScannerOpen(true);
   };
 
-  const handlePageSaved = () => {
+  const handlePageSaved = async (pageId: string) => {
     console.log("Page saved, refreshing page groups");
-    fetchLinkedPageGroups();
+    setOcrScannerOpen(false); // Close the dialog after saving
+    toast({
+      title: "Success",
+      description: "Page saved successfully and added to project",
+    });
+
+    // Fetch immediately to clear any cached data
+    await fetchLinkedPageGroups();
+
+    // Fetch again after a delay to ensure we get the updated data
+    setTimeout(() => {
+      fetchLinkedPageGroups();
+    }, 1000);
   };
 
   const handleUpdatePageText = async (pageId: string, newText: string) => {
