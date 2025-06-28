@@ -1,89 +1,132 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Plus, FileText, Upload } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
-import { ProjectOCRScanner } from "@/components/project-ocr-scanner"
-import { EditableTextDisplay } from "@/components/editable-text-display"
-import type { Project, LinkedPageGroup } from "@/types/project"
-import { PageTitleEditor } from "@/components/page-title-editor"
-import { InlineTranslationEditor } from "@/components/inline-translation-editor"
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { ArrowLeft, Plus, FileText, Upload } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { ProjectOCRScanner } from "@/components/project-ocr-scanner";
+import { EditableTextDisplay } from "@/components/editable-text-display";
+import type { Project, LinkedPageGroup } from "@/types/project";
+import { PageTitleEditor } from "@/components/page-title-editor";
+import { InlineTranslationEditor } from "@/components/inline-translation-editor";
 
 interface LinkedProjectDetailViewProps {
-  project: Project
-  onBack: () => void
+  project: Project;
+  onBack: () => void;
 }
 
 const SUPPORTED_LANGUAGES = [
-  { code: "ara", name: "Arabic (العربية)", direction: "rtl" as const, flag: "🇸🇦" },
+  {
+    code: "ara",
+    name: "Arabic (العربية)",
+    direction: "rtl" as const,
+    flag: "🇸🇦",
+  },
   { code: "eng", name: "English", direction: "ltr" as const, flag: "🇺🇸" },
-  { code: "fra", name: "French (Français)", direction: "ltr" as const, flag: "🇫🇷" },
-  { code: "spa", name: "Spanish (Español)", direction: "ltr" as const, flag: "🇪🇸" },
-  { code: "deu", name: "German (Deutsch)", direction: "ltr" as const, flag: "🇩🇪" },
-]
+  {
+    code: "fra",
+    name: "French (Français)",
+    direction: "ltr" as const,
+    flag: "🇫🇷",
+  },
+  {
+    code: "spa",
+    name: "Spanish (Español)",
+    direction: "ltr" as const,
+    flag: "🇪🇸",
+  },
+  {
+    code: "deu",
+    name: "German (Deutsch)",
+    direction: "ltr" as const,
+    flag: "🇩🇪",
+  },
+];
 
-export function LinkedProjectDetailView({ project, onBack }: LinkedProjectDetailViewProps) {
-  const [linkedPageGroups, setLinkedPageGroups] = useState<LinkedPageGroup[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [ocrScannerOpen, setOcrScannerOpen] = useState(false)
-  const [selectedLanguage, setSelectedLanguage] = useState<string>("")
-  const { toast } = useToast()
+export function LinkedProjectDetailView({
+  project,
+  onBack,
+}: LinkedProjectDetailViewProps) {
+  const [linkedPageGroups, setLinkedPageGroups] = useState<LinkedPageGroup[]>(
+    []
+  );
+  const [isLoading, setIsLoading] = useState(true);
+  const [ocrScannerOpen, setOcrScannerOpen] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState<string>("");
+  const { toast } = useToast();
 
   useEffect(() => {
-    fetchLinkedPageGroups()
-  }, [project.id])
+    fetchLinkedPageGroups();
+  }, [project.id]);
 
   const fetchLinkedPageGroups = async () => {
     try {
-      const response = await fetch(`/api/projects/${project.id}`)
+      console.log("Fetching linked page groups for project:", project.id);
+      const response = await fetch(`/api/projects/${project.id}`);
       if (response.ok) {
-        const data = await response.json()
-        setLinkedPageGroups(data.linkedPageGroups || [])
+        const data = await response.json();
+        console.log("API response data:", data);
+        console.log("Linked page groups:", data.linkedPageGroups);
+        setLinkedPageGroups(data.linkedPageGroups || []);
       }
     } catch (error) {
-      console.error("Error fetching linked page groups:", error)
+      console.error("Error fetching linked page groups:", error);
       toast({
         title: "Error",
         description: "Failed to fetch project pages",
         variant: "destructive",
-      })
+      });
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const handleAddRootLanguagePage = () => {
-    console.log("Add root page clicked, project:", project)
-    console.log("Root language:", project.rootLanguage)
-    setSelectedLanguage(project.rootLanguage)
-    setOcrScannerOpen(true)
-  }
+    console.log("Add root page clicked, project:", project);
+    console.log("Root language:", project.rootLanguage);
+    setSelectedLanguage(project.rootLanguage);
+    setOcrScannerOpen(true);
+  };
 
-  const handlePageSaved = () => {
-    console.log("Page saved, refreshing page groups")
-    fetchLinkedPageGroups()
-  }
+  const handlePageSaved = async (pageId: string) => {
+    console.log("Page saved, refreshing page groups");
+    setOcrScannerOpen(false); // Close the dialog after saving
+    toast({
+      title: "Success",
+      description: "Page saved successfully and added to project",
+    });
+
+    // Fetch immediately to clear any cached data
+    await fetchLinkedPageGroups();
+
+    // Fetch again after a delay to ensure we get the updated data
+    setTimeout(() => {
+      fetchLinkedPageGroups();
+    }, 1000);
+  };
 
   const handleUpdatePageText = async (pageId: string, newText: string) => {
     try {
       // Check if this is a root page or translation
-      const isTranslation = pageId.includes("_")
+      const isTranslation = pageId.includes("_");
 
       if (isTranslation) {
         // Extract page group ID and language from the translation ID
-        const [pageGroupId, language] = pageId.split("_")
+        const [pageGroupId, language] = pageId.split("_");
 
-        const response = await fetch(`/api/page-groups/${pageGroupId}/translations`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ language, text: newText }),
-        })
+        const response = await fetch(
+          `/api/page-groups/${pageGroupId}/translations`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ language, text: newText }),
+          }
+        );
 
         if (!response.ok) {
-          throw new Error("Failed to update translation")
+          throw new Error("Failed to update translation");
         }
       } else {
         // Update root text
@@ -91,69 +134,83 @@ export function LinkedProjectDetailView({ project, onBack }: LinkedProjectDetail
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ rootText: newText }),
-        })
+        });
 
         if (!response.ok) {
-          throw new Error("Failed to update root text")
+          throw new Error("Failed to update root text");
         }
       }
 
-      await fetchLinkedPageGroups()
+      await fetchLinkedPageGroups();
       toast({
         title: "Success",
         description: "Text updated successfully",
-      })
+      });
     } catch (error) {
-      console.error("Error updating text:", error)
+      console.error("Error updating text:", error);
       toast({
         title: "Error",
         description: "Failed to update text",
         variant: "destructive",
-      })
+      });
     }
-  }
+  };
 
-  const handleCreateTranslation = async (pageGroupId: string, language: string, translationText: string) => {
+  const handleCreateTranslation = async (
+    pageGroupId: string,
+    language: string,
+    translationText: string
+  ) => {
     try {
       console.log("Creating translation:", {
         pageGroupId,
         language,
         translationText: translationText.substring(0, 50) + "...",
-      })
+      });
 
-      const response = await fetch(`/api/page-groups/${pageGroupId}/translations`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ language, text: translationText }),
-      })
+      const response = await fetch(
+        `/api/page-groups/${pageGroupId}/translations`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ language, text: translationText }),
+        }
+      );
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(`Failed to create translation: ${errorData.error || response.statusText}`)
+        const errorData = await response.json();
+        throw new Error(
+          `Failed to create translation: ${
+            errorData.error || response.statusText
+          }`
+        );
       }
 
-      console.log("Translation created successfully")
+      console.log("Translation created successfully");
 
       // Refresh the page groups to show the new translation
-      await fetchLinkedPageGroups()
+      await fetchLinkedPageGroups();
 
       toast({
         title: "Success",
         description: "Translation created successfully",
-      })
+      });
     } catch (error) {
-      console.error("Error creating translation:", error)
+      console.error("Error creating translation:", error);
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to create translation",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Failed to create translation",
         variant: "destructive",
-      })
+      });
     }
-  }
+  };
 
   const getLanguageInfo = (code: string) => {
-    return SUPPORTED_LANGUAGES.find((lang) => lang.code === code)
-  }
+    return SUPPORTED_LANGUAGES.find((lang) => lang.code === code);
+  };
 
   const handleUpdatePageTitle = async (pageId: string, newTitle: string) => {
     try {
@@ -161,36 +218,37 @@ export function LinkedProjectDetailView({ project, onBack }: LinkedProjectDetail
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: newTitle }),
-      })
+      });
 
       if (response.ok) {
-        await fetchLinkedPageGroups()
+        await fetchLinkedPageGroups();
         toast({
           title: "Success",
           description: "Page title updated successfully",
-        })
+        });
       } else {
-        throw new Error("Failed to update page title")
+        throw new Error("Failed to update page title");
       }
     } catch (error) {
-      console.error("Error updating page title:", error)
+      console.error("Error updating page title:", error);
       toast({
         title: "Error",
         description: "Failed to update page title",
         variant: "destructive",
-      })
+      });
     }
-  }
+  };
 
   if (isLoading) {
-    return <div className="text-center py-8">Loading project details...</div>
+    return <div className="text-center py-8">Loading project details...</div>;
   }
 
   return (
     <div className="space-y-6">
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
         <p className="text-sm text-blue-800">
-          <strong>Project Context:</strong> Pages will be automatically added to "{project.title}" project.
+          <strong>Project Context:</strong> Pages will be automatically added to
+          "{project.title}" project.
         </p>
       </div>
       {/* Header */}
@@ -201,7 +259,9 @@ export function LinkedProjectDetailView({ project, onBack }: LinkedProjectDetail
         </Button>
         <div>
           <h1 className="text-2xl font-bold">{project.title}</h1>
-          {project.description && <p className="text-muted-foreground">{project.description}</p>}
+          {project.description && (
+            <p className="text-muted-foreground">{project.description}</p>
+          )}
         </div>
       </div>
 
@@ -216,19 +276,25 @@ export function LinkedProjectDetailView({ project, onBack }: LinkedProjectDetail
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">Root Language:</span>
                 <Badge variant="default" className="bg-blue-600">
-                  {getLanguageInfo(project.rootLanguage)?.flag} {getLanguageInfo(project.rootLanguage)?.name}
+                  {getLanguageInfo(project.rootLanguage)?.flag}{" "}
+                  {getLanguageInfo(project.rootLanguage)?.name}
                 </Badge>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">Translation Languages:</span>
+                <span className="text-sm font-medium">
+                  Translation Languages:
+                </span>
                 <div className="flex gap-1">
                   {(project.translationLanguages || []).map((langCode) => {
-                    const langInfo = getLanguageInfo(langCode)
+                    const langInfo = getLanguageInfo(langCode);
                     return (
-                      <Badge key={langCode} variant="outline" className="text-xs">
+                      <Badge
+                        key={langCode}
+                        variant="outline"
+                        className="text-xs">
                         {langInfo?.flag} {langInfo?.name || langCode}
                       </Badge>
-                    )
+                    );
                   })}
                 </div>
               </div>
@@ -236,11 +302,18 @@ export function LinkedProjectDetailView({ project, onBack }: LinkedProjectDetail
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">Status:</span>
-                <Badge variant={project.status === "active" ? "default" : "secondary"}>{project.status}</Badge>
+                <Badge
+                  variant={
+                    project.status === "active" ? "default" : "secondary"
+                  }>
+                  {project.status}
+                </Badge>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">Created:</span>
-                <span className="text-sm">{new Date(project.createdAt).toLocaleDateString()}</span>
+                <span className="text-sm">
+                  {new Date(project.createdAt).toLocaleDateString()}
+                </span>
               </div>
             </div>
           </div>
@@ -262,7 +335,8 @@ export function LinkedProjectDetailView({ project, onBack }: LinkedProjectDetail
           <FileText className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
           <h3 className="text-lg font-medium mb-2">No pages yet</h3>
           <p className="text-muted-foreground mb-4">
-            Add pages in {getLanguageInfo(project.rootLanguage)?.name} to get started
+            Add pages in {getLanguageInfo(project.rootLanguage)?.name} to get
+            started
           </p>
           <Button onClick={handleAddRootLanguagePage} className="gap-2">
             <Upload className="w-4 h-4" />
@@ -272,7 +346,7 @@ export function LinkedProjectDetailView({ project, onBack }: LinkedProjectDetail
       ) : (
         <div className="space-y-6">
           {linkedPageGroups.map((group, index) => {
-            const rootLangInfo = getLanguageInfo(group.rootPage.language)
+            const rootLangInfo = getLanguageInfo(group.rootPage.language);
 
             return (
               <Card key={group.rootPage.id} className="overflow-hidden">
@@ -287,7 +361,9 @@ export function LinkedProjectDetailView({ project, onBack }: LinkedProjectDetail
                       <PageTitleEditor
                         title={group.rootPage.title || ""}
                         fileName={group.rootPage.fileName}
-                        onSave={(newTitle) => handleUpdatePageTitle(group.rootPage.id, newTitle)}
+                        onSave={(newTitle) =>
+                          handleUpdatePageTitle(group.rootPage.id, newTitle)
+                        }
                       />
                     </div>
                   </div>
@@ -305,15 +381,17 @@ export function LinkedProjectDetailView({ project, onBack }: LinkedProjectDetail
                       text={group.rootPage.editedText}
                       language={group.rootPage.language}
                       direction={rootLangInfo?.direction || "ltr"}
-                      onSave={(newText) => handleUpdatePageText(group.rootPage.id, newText)}
+                      onSave={(newText) =>
+                        handleUpdatePageText(group.rootPage.id, newText)
+                      }
                     />
                   </div>
 
                   {/* Translation Pages */}
                   <div className="space-y-3">
                     {(project.translationLanguages || []).map((langCode) => {
-                      const langInfo = getLanguageInfo(langCode)
-                      const translationPage = group.translations[langCode]
+                      const langInfo = getLanguageInfo(langCode);
+                      const translationPage = group.translations[langCode];
 
                       return (
                         <div key={langCode} className="border rounded-lg p-4">
@@ -322,7 +400,11 @@ export function LinkedProjectDetailView({ project, onBack }: LinkedProjectDetail
                               <Badge variant="outline">
                                 {langInfo?.flag} {langInfo?.name}
                               </Badge>
-                              {translationPage && <Badge variant="outline">{translationPage.status}</Badge>}
+                              {translationPage && (
+                                <Badge variant="outline">
+                                  {translationPage.status}
+                                </Badge>
+                              )}
                             </div>
                           </div>
 
@@ -331,7 +413,12 @@ export function LinkedProjectDetailView({ project, onBack }: LinkedProjectDetail
                               text={translationPage.editedText}
                               language={translationPage.language}
                               direction={langInfo?.direction || "ltr"}
-                              onSave={(newText) => handleUpdatePageText(translationPage.id, newText)}
+                              onSave={(newText) =>
+                                handleUpdatePageText(
+                                  translationPage.id,
+                                  newText
+                                )
+                              }
                             />
                           ) : (
                             <div className="space-y-3">
@@ -343,31 +430,34 @@ export function LinkedProjectDetailView({ project, onBack }: LinkedProjectDetail
                                 targetLanguage={langCode}
                                 languageInfo={langInfo}
                                 onSave={(translationText) =>
-                                  handleCreateTranslation(group.rootPage.id, langCode, translationText)
+                                  handleCreateTranslation(
+                                    group.rootPage.id,
+                                    langCode,
+                                    translationText
+                                  )
                                 }
                               />
                             </div>
                           )}
                         </div>
-                      )
+                      );
                     })}
                   </div>
                 </CardContent>
               </Card>
-            )
+            );
           })}
         </div>
       )}
 
       {/* OCR Scanner Dialog */}
       <ProjectOCRScanner
-        projectId={project.id}
-        rootLanguage={project.rootLanguage}
-        translationLanguages={project.translationLanguages || []}
+        project={project}
+        language={project.rootLanguage}
         isOpen={ocrScannerOpen}
         onClose={() => setOcrScannerOpen(false)}
         onPageSaved={handlePageSaved}
       />
     </div>
-  )
+  );
 }
