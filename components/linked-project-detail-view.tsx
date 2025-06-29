@@ -110,7 +110,9 @@ export function LinkedProjectDetailView({
   const handleUpdatePageText = async (pageId: string, newText: string) => {
     try {
       // Check if this is a root page or translation
-      const isTranslation = pageId.includes("_");
+      // Root page group IDs start with "pagegroup_", translation IDs have format "pageGroupId_languageCode"
+      const isTranslation =
+        pageId.includes("_") && !pageId.startsWith("pagegroup_");
 
       if (isTranslation) {
         // Extract page group ID and language from the translation ID
