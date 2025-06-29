@@ -656,9 +656,7 @@ export class ProjectService {
     return { project, linkedPageGroups };
   }
 
-  async getProjectWithPages(
-    projectId: string
-  ): Promise<{
+  async getProjectWithPages(projectId: string): Promise<{
     project: Project;
     pagesByLanguage: Record<string, any[]>;
   } | null> {
