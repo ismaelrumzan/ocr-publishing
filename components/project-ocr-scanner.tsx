@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import Tesseract from "tesseract.js";
 import { Label } from "@/components/ui/label";
 import { TextDisplay } from "@/components/text-display";
+import { ZoomableImage } from "@/components/ui/zoomable-image";
 import type { Project } from "@/types/project";
 import { PageTitleEditor } from "@/components/page-title-editor";
 
@@ -415,12 +416,14 @@ export function ProjectOCRScanner({
                           {selectedLanguage.name}
                         </Badge>
                       </div>
-                      <div className="border rounded-lg overflow-hidden bg-muted h-full flex items-center justify-center">
-                        <img
+                      <div className="border rounded-lg overflow-hidden bg-muted h-full">
+                        <ZoomableImage
                           src={page.imageUrl || "/placeholder.svg"}
                           alt={`Scan of ${page.file.name}`}
-                          className="max-w-full max-h-full object-contain"
-                          style={{ maxHeight: "calc(70vh - 2rem)" }}
+                          className="w-full h-full"
+                          showControls={true}
+                          maxZoom={3}
+                          alignTopOnFit={true}
                         />
                       </div>
                     </div>
@@ -445,8 +448,7 @@ export function ProjectOCRScanner({
                           direction={selectedLanguage.direction}
                           editable={page.status !== "approved"}
                           onChange={(newText) => updateText(page.id, newText)}
-                          className="h-full"
-                          style={{ minHeight: "calc(70vh - 4rem)" }}
+                          className="h-full min-h-[calc(70vh-4rem)]"
                         />
                       </div>
                     </div>

@@ -647,6 +647,7 @@ export class ProjectService {
           language: pageGroup.rootLanguage,
           editedText: pageGroup.rootText,
           status: pageGroup.status,
+          imageUrl: pageGroup.imageUrl,
         };
 
         const translations: Record<string, any> = {};
