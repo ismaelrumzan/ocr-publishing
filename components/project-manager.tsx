@@ -1,22 +1,41 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Plus, FolderOpen, Edit, Trash2, FileText, Calendar } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
-import type { Project, Page } from "@/types/project"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { LinkedProjectDetailView } from "@/components/linked-project-detail-view"
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Plus,
+  FolderOpen,
+  Edit,
+  Trash2,
+  FileText,
+  Calendar,
+} from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import type { Project, Page } from "@/types/project";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { LinkedProjectDetailView } from "@/components/linked-project-detail-view";
 
 interface ProjectManagerProps {
-  onProjectSelect?: (project: Project) => void
+  onProjectSelect?: (project: Project) => void;
 }
 
 const SUPPORTED_LANGUAGES = [
@@ -25,22 +44,23 @@ const SUPPORTED_LANGUAGES = [
   { code: "fra", name: "French (Français)", flag: "🇫🇷" },
   { code: "spa", name: "Spanish (Español)", flag: "🇪🇸" },
   { code: "deu", name: "German (Deutsch)", flag: "🇩🇪" },
-]
+];
 
 export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
-  const [projects, setProjects] = useState<Project[]>([])
-  const [allPages, setAllPages] = useState<Page[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
-  const [isManagePagesDialogOpen, setIsManagePagesDialogOpen] = useState(false)
-  const [editingProject, setEditingProject] = useState<Project | null>(null)
-  const [managingProject, setManagingProject] = useState<Project | null>(null)
-  const [projectPages, setProjectPages] = useState<Record<string, Page[]>>({})
-  const { toast } = useToast()
-  const [selectedProject, setSelectedProject] = useState<Project | null>(null)
-
-  console.log("Dialog state:", { isCreateDialogOpen, isEditDialogOpen, isManagePagesDialogOpen })
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [allPages, setAllPages] = useState<Page[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isManagePagesDialogOpen, setIsManagePagesDialogOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [managingProject, setManagingProject] = useState<Project | null>(null);
+  const [projectPages, setProjectPages] = useState<Record<string, Page[]>>({});
+  const [projectPageCounts, setProjectPageCounts] = useState<
+    Record<string, Record<string, number>>
+  >({});
+  const { toast } = useToast();
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -48,70 +68,113 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
     description: "",
     rootLanguage: "",
     translationLanguages: [] as string[],
-  })
+  });
 
   useEffect(() => {
-    fetchProjects()
-    fetchAllPages()
-  }, [])
+    fetchProjects();
+    fetchAllPages();
+  }, []);
 
   const fetchProjects = async () => {
     try {
-      const response = await fetch("/api/projects")
+      const response = await fetch("/api/projects");
       if (response.ok) {
-        const data = await response.json()
-        setProjects(
-          (data as Project[]).map((p) => ({
-            ...p,
-            pages: p.pages ?? {}, // 🛡️ guarantee pages is an object
-          })),
-        )
+        const data = await response.json();
+        const projectsWithPages = (data as Project[]).map((p) => ({
+          ...p,
+          pages: p.pages ?? {}, // 🛡️ guarantee pages is an object
+        }));
+        setProjects(projectsWithPages);
+
+        // Fetch page counts for each project
+        await Promise.all(projectsWithPages.map(fetchProjectPageCounts));
       }
     } catch (error) {
-      console.error("Error fetching projects:", error)
+      console.error("Error fetching projects:", error);
       toast({
         title: "Error",
         description: "Failed to fetch projects",
         variant: "destructive",
-      })
+      });
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const fetchAllPages = async () => {
     try {
-      const response = await fetch("/api/pages")
+      const response = await fetch("/api/pages");
       if (response.ok) {
-        const data = await response.json()
-        setAllPages(data)
+        const data = await response.json();
+        setAllPages(data);
       }
     } catch (error) {
-      console.error("Error fetching pages:", error)
+      console.error("Error fetching pages:", error);
     }
-  }
+  };
 
   const fetchProjectPages = async (projectId: string) => {
     try {
-      const response = await fetch(`/api/projects/${projectId}`)
+      const response = await fetch(`/api/projects/${projectId}`);
       if (response.ok) {
-        const data = await response.json()
-        setProjectPages(data.pagesByLanguage)
-        setManagingProject(data.project)
+        const data = await response.json();
+        setProjectPages(data.pagesByLanguage);
+        setManagingProject(data.project);
       }
     } catch (error) {
-      console.error("Error fetching project pages:", error)
+      console.error("Error fetching project pages:", error);
     }
-  }
+  };
+
+  const fetchProjectPageCounts = async (project: Project) => {
+    try {
+      const response = await fetch(`/api/projects/${project.id}`);
+      if (response.ok) {
+        const data = await response.json();
+        const linkedPageGroups = data.linkedPageGroups || [];
+
+        // Calculate page counts by language
+        const counts: Record<string, number> = {};
+
+        // Count root pages
+        counts[project.rootLanguage] = linkedPageGroups.length;
+
+        // Count translations
+        project.translationLanguages.forEach((lang) => {
+          counts[lang] = linkedPageGroups.reduce(
+            (total: number, group: any) => {
+              return total + (group.translations[lang] ? 1 : 0);
+            },
+            0
+          );
+        });
+
+        setProjectPageCounts((prev) => ({
+          ...prev,
+          [project.id]: counts,
+        }));
+      }
+    } catch (error) {
+      console.error(
+        `Error fetching page counts for project ${project.id}:`,
+        error
+      );
+    }
+  };
 
   const handleCreateProject = async () => {
-    if (!formData.title || !formData.rootLanguage || formData.translationLanguages.length === 0) {
+    if (
+      !formData.title ||
+      !formData.rootLanguage ||
+      formData.translationLanguages.length === 0
+    ) {
       toast({
         title: "Validation Error",
-        description: "Title, root language, and at least one translation language are required",
+        description:
+          "Title, root language, and at least one translation language are required",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
 
     try {
@@ -124,41 +187,57 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
           description: formData.description,
           rootLanguage: formData.rootLanguage,
           translationLanguages: formData.translationLanguages,
-          supportedLanguages: [formData.rootLanguage, ...formData.translationLanguages], // Add this for API compatibility
+          supportedLanguages: [
+            formData.rootLanguage,
+            ...formData.translationLanguages,
+          ], // Add this for API compatibility
         }),
-      })
+      });
 
       if (response.ok) {
-        const newProject = await response.json()
-        setProjects((prev) => [{ ...newProject, pages: newProject.pages ?? {} }, ...prev])
-        setIsCreateDialogOpen(false)
-        resetForm()
+        const newProject = await response.json();
+        const projectWithPages = {
+          ...newProject,
+          pages: newProject.pages ?? {},
+        };
+        setProjects((prev) => [projectWithPages, ...prev]);
+
+        // Fetch page counts for the new project
+        await fetchProjectPageCounts(projectWithPages);
+
+        setIsCreateDialogOpen(false);
+        resetForm();
         toast({
           title: "Success",
           description: "Project created and saved to storage successfully",
-        })
+        });
       } else {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to create project")
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to create project");
       }
     } catch (error) {
-      console.error("Error creating project:", error)
+      console.error("Error creating project:", error);
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to create project",
+        description:
+          error instanceof Error ? error.message : "Failed to create project",
         variant: "destructive",
-      })
+      });
     }
-  }
+  };
 
   const handleEditProject = async () => {
-    if (!editingProject || !formData.title || formData.translationLanguages.length === 0) {
+    if (
+      !editingProject ||
+      !formData.title ||
+      formData.translationLanguages.length === 0
+    ) {
       toast({
         title: "Validation Error",
         description: "Title and at least one translation language are required",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
 
     try {
@@ -166,129 +245,154 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
-      })
+      });
 
       if (response.ok) {
-        const updatedProject = await response.json()
+        const updatedProject = await response.json();
+        const projectWithPages = {
+          ...updatedProject,
+          pages: updatedProject.pages ?? {},
+        };
         setProjects((prev) =>
-          prev.map((p) => (p.id === updatedProject.id ? { ...updatedProject, pages: updatedProject.pages ?? {} } : p)),
-        )
-        setIsEditDialogOpen(false)
-        setEditingProject(null)
-        resetForm()
+          prev.map((p) => (p.id === updatedProject.id ? projectWithPages : p))
+        );
+
+        // Refresh page counts for the updated project
+        await fetchProjectPageCounts(projectWithPages);
+
+        setIsEditDialogOpen(false);
+        setEditingProject(null);
+        resetForm();
         toast({
           title: "Success",
           description: "Project updated successfully",
-        })
+        });
       } else {
-        throw new Error("Failed to update project")
+        throw new Error("Failed to update project");
       }
     } catch (error) {
-      console.error("Error updating project:", error)
+      console.error("Error updating project:", error);
       toast({
         title: "Error",
         description: "Failed to update project",
         variant: "destructive",
-      })
+      });
     }
-  }
+  };
 
   const handleDeleteProject = async (projectId: string) => {
-    if (!confirm("Are you sure you want to delete this project?")) return
+    if (!confirm("Are you sure you want to delete this project?")) return;
 
     try {
       const response = await fetch(`/api/projects/${projectId}`, {
         method: "DELETE",
-      })
+      });
 
       if (response.ok) {
-        setProjects((prev) => prev.filter((p) => p.id !== projectId))
+        setProjects((prev) => prev.filter((p) => p.id !== projectId));
+
+        // Clean up page counts for the deleted project
+        setProjectPageCounts((prev) => {
+          const newCounts = { ...prev };
+          delete newCounts[projectId];
+          return newCounts;
+        });
+
         toast({
           title: "Success",
           description: "Project deleted successfully",
-        })
+        });
       } else {
-        throw new Error("Failed to delete project")
+        throw new Error("Failed to delete project");
       }
     } catch (error) {
-      console.error("Error deleting project:", error)
+      console.error("Error deleting project:", error);
       toast({
         title: "Error",
         description: "Failed to delete project",
         variant: "destructive",
-      })
+      });
     }
-  }
+  };
 
   const handleAddPageToProject = async (pageId: string, language: string) => {
-    if (!managingProject) return
+    if (!managingProject) return;
 
     try {
-      const response = await fetch(`/api/projects/${managingProject.id}/pages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pageId, language }),
-      })
+      const response = await fetch(
+        `/api/projects/${managingProject.id}/pages`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pageId, language }),
+        }
+      );
 
       if (response.ok) {
-        await fetchProjectPages(managingProject.id)
+        await fetchProjectPages(managingProject.id);
         toast({
           title: "Success",
           description: "Page added to project",
-        })
+        });
       }
     } catch (error) {
-      console.error("Error adding page to project:", error)
+      console.error("Error adding page to project:", error);
       toast({
         title: "Error",
         description: "Failed to add page to project",
         variant: "destructive",
-      })
+      });
     }
-  }
+  };
 
-  const handleRemovePageFromProject = async (pageId: string, language: string) => {
-    if (!managingProject) return
+  const handleRemovePageFromProject = async (
+    pageId: string,
+    language: string
+  ) => {
+    if (!managingProject) return;
 
     try {
-      const response = await fetch(`/api/projects/${managingProject.id}/pages`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pageId, language }),
-      })
+      const response = await fetch(
+        `/api/projects/${managingProject.id}/pages`,
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pageId, language }),
+        }
+      );
 
       if (response.ok) {
-        await fetchProjectPages(managingProject.id)
+        await fetchProjectPages(managingProject.id);
         toast({
           title: "Success",
           description: "Page removed from project",
-        })
+        });
       }
     } catch (error) {
-      console.error("Error removing page from project:", error)
+      console.error("Error removing page from project:", error);
       toast({
         title: "Error",
         description: "Failed to remove page from project",
         variant: "destructive",
-      })
+      });
     }
-  }
+  };
 
   const openEditDialog = (project: Project) => {
-    setEditingProject(project)
+    setEditingProject(project);
     setFormData({
       title: project.title,
       description: project.description || "",
       rootLanguage: project.rootLanguage,
       translationLanguages: project.translationLanguages,
-    })
-    setIsEditDialogOpen(true)
-  }
+    });
+    setIsEditDialogOpen(true);
+  };
 
   const openManagePagesDialog = (project: Project) => {
-    setIsManagePagesDialogOpen(true)
-    fetchProjectPages(project.id)
-  }
+    setIsManagePagesDialogOpen(true);
+    fetchProjectPages(project.id);
+  };
 
   const resetForm = () => {
     setFormData({
@@ -296,17 +400,22 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
       description: "",
       rootLanguage: "",
       translationLanguages: [],
-    })
-  }
+    });
+  };
 
   const getLanguageInfo = (code: string) => {
-    return SUPPORTED_LANGUAGES.find((lang) => lang.code === code)
-  }
+    return SUPPORTED_LANGUAGES.find((lang) => lang.code === code);
+  };
 
-  const getPageCount = (p: Project, lang: string) => p.pages?.[lang]?.length ?? 0
+  const getPageCount = (p: Project, lang: string) => {
+    return projectPageCounts[p.id]?.[lang] ?? 0;
+  };
 
-  const getTotalPageCount = (project: Project) =>
-    Object.values(project.pages ?? {}).reduce((total, ids) => total + ids.length, 0)
+  const getTotalPageCount = (project: Project) => {
+    const counts = projectPageCounts[project.id];
+    if (!counts) return 0;
+    return Object.values(counts).reduce((total, count) => total + count, 0);
+  };
 
   const handleTranslationLanguageToggle = (languageCode: string) => {
     setFormData((prev) => ({
@@ -314,19 +423,24 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
       translationLanguages: prev.translationLanguages.includes(languageCode)
         ? prev.translationLanguages.filter((l) => l !== languageCode)
         : [...prev.translationLanguages, languageCode],
-    }))
-  }
+    }));
+  };
 
   const handleProjectSelect = (project: Project) => {
-    setSelectedProject(project)
-  }
+    setSelectedProject(project);
+  };
 
   if (isLoading) {
-    return <div className="text-center py-8">Loading projects...</div>
+    return <div className="text-center py-8">Loading projects...</div>;
   }
 
   if (selectedProject) {
-    return <LinkedProjectDetailView project={selectedProject} onBack={() => setSelectedProject(null)} />
+    return (
+      <LinkedProjectDetailView
+        project={selectedProject}
+        onBack={() => setSelectedProject(null)}
+      />
+    );
   }
 
   return (
@@ -338,10 +452,8 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
             <Button
               className="gap-2"
               onClick={() => {
-                console.log("Create Project button clicked") // Debug log
-                setIsCreateDialogOpen(true)
-              }}
-            >
+                setIsCreateDialogOpen(true);
+              }}>
               <Plus className="w-4 h-4" />
               Create Project
             </Button>
@@ -356,7 +468,9 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
                 <Input
                   id="title"
                   value={formData.title}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, title: e.target.value }))}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, title: e.target.value }))
+                  }
                   placeholder="Enter project title"
                 />
               </div>
@@ -366,7 +480,12 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
                 <Textarea
                   id="description"
                   value={formData.description}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      description: e.target.value,
+                    }))
+                  }
                   placeholder="Enter project description"
                   rows={3}
                 />
@@ -377,8 +496,9 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
                 <Label>Root Language (Source)</Label>
                 <Select
                   value={formData.rootLanguage}
-                  onValueChange={(value) => setFormData((prev) => ({ ...prev, rootLanguage: value }))}
-                >
+                  onValueChange={(value) =>
+                    setFormData((prev) => ({ ...prev, rootLanguage: value }))
+                  }>
                   <SelectTrigger>
                     <SelectValue placeholder="Select root language" />
                   </SelectTrigger>
@@ -399,14 +519,24 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
               <div className="space-y-2">
                 <Label>Translation Languages (Targets)</Label>
                 <div className="grid grid-cols-2 gap-2">
-                  {SUPPORTED_LANGUAGES.filter((lang) => lang.code !== formData.rootLanguage).map((language) => (
-                    <div key={language.code} className="flex items-center space-x-2">
+                  {SUPPORTED_LANGUAGES.filter(
+                    (lang) => lang.code !== formData.rootLanguage
+                  ).map((language) => (
+                    <div
+                      key={language.code}
+                      className="flex items-center space-x-2">
                       <Checkbox
                         id={language.code}
-                        checked={formData.translationLanguages.includes(language.code)}
-                        onCheckedChange={() => handleTranslationLanguageToggle(language.code)}
+                        checked={formData.translationLanguages.includes(
+                          language.code
+                        )}
+                        onCheckedChange={() =>
+                          handleTranslationLanguageToggle(language.code)
+                        }
                       />
-                      <Label htmlFor={language.code} className="flex items-center gap-2">
+                      <Label
+                        htmlFor={language.code}
+                        className="flex items-center gap-2">
                         <span>{language.flag}</span>
                         <span>{language.name}</span>
                       </Label>
@@ -416,7 +546,9 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
               </div>
 
               <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsCreateDialogOpen(false)}>
                   Cancel
                 </Button>
                 <Button onClick={handleCreateProject}>Save Project</Button>
@@ -437,27 +569,43 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
       ) : (
         <div className="grid gap-4">
           {projects.map((project) => (
-            <Card key={project.id} className="hover:shadow-md transition-shadow">
+            <Card
+              key={project.id}
+              className="hover:shadow-md transition-shadow">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
                     <CardTitle className="text-lg">{project.title}</CardTitle>
-                    {project.description && <p className="text-sm text-muted-foreground mt-1">{project.description}</p>}
+                    {project.description && (
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {project.description}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge variant={project.status === "active" ? "default" : "secondary"}>{project.status}</Badge>
-                    <Button variant="ghost" size="icon" onClick={() => openManagePagesDialog(project)}>
+                    <Badge
+                      variant={
+                        project.status === "active" ? "default" : "secondary"
+                      }>
+                      {project.status}
+                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => openManagePagesDialog(project)}>
                       <FileText className="w-4 h-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={() => openEditDialog(project)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => openEditDialog(project)}>
                       <Edit className="w-4 h-4" />
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() => handleDeleteProject(project.id)}
-                      className="text-destructive hover:text-destructive"
-                    >
+                      className="text-destructive hover:text-destructive">
                       <Trash2 className="w-4 h-4" />
                     </Button>
                   </div>
@@ -467,21 +615,29 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
                 <div className="space-y-3">
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">Root Language:</span>
+                      <span className="text-sm font-medium">
+                        Root Language:
+                      </span>
                       <Badge variant="default" className="bg-blue-600">
-                        {getLanguageInfo(project.rootLanguage)?.flag} {getLanguageInfo(project.rootLanguage)?.name}
+                        {getLanguageInfo(project.rootLanguage)?.flag}{" "}
+                        {getLanguageInfo(project.rootLanguage)?.name}
                       </Badge>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">Translation Languages:</span>
+                      <span className="text-sm font-medium">
+                        Translation Languages:
+                      </span>
                       <div className="flex gap-1">
                         {project.translationLanguages.map((langCode) => {
-                          const langInfo = getLanguageInfo(langCode)
+                          const langInfo = getLanguageInfo(langCode);
                           return (
-                            <Badge key={langCode} variant="outline" className="text-xs">
+                            <Badge
+                              key={langCode}
+                              variant="outline"
+                              className="text-xs">
                               {langInfo?.flag} {langInfo?.name || langCode}
                             </Badge>
-                          )
+                          );
                         })}
                       </div>
                     </div>
@@ -491,20 +647,27 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
                     {/* Root Language */}
                     <div className="flex items-center justify-between p-2 bg-blue-50 border border-blue-200 rounded">
                       <span className="flex items-center gap-1">
-                        <Badge variant="default" className="text-xs bg-blue-600">
+                        <Badge
+                          variant="default"
+                          className="text-xs bg-blue-600">
                           ROOT
                         </Badge>
-                        {getLanguageInfo(project.rootLanguage)?.flag} {getLanguageInfo(project.rootLanguage)?.name}
+                        {getLanguageInfo(project.rootLanguage)?.flag}{" "}
+                        {getLanguageInfo(project.rootLanguage)?.name}
                       </span>
-                      <Badge variant="secondary">{getPageCount(project, project.rootLanguage)} pages</Badge>
+                      <Badge variant="secondary">
+                        {getPageCount(project, project.rootLanguage)} pages
+                      </Badge>
                     </div>
 
                     {/* Translation Languages */}
                     {project.translationLanguages.map((langCode) => {
-                      const langInfo = getLanguageInfo(langCode)
-                      const pageCount = getPageCount(project, langCode)
+                      const langInfo = getLanguageInfo(langCode);
+                      const pageCount = getPageCount(project, langCode);
                       return (
-                        <div key={langCode} className="flex items-center justify-between p-2 bg-muted rounded">
+                        <div
+                          key={langCode}
+                          className="flex items-center justify-between p-2 bg-muted rounded">
                           <span className="flex items-center gap-1">
                             <Badge variant="outline" className="text-xs">
                               TRANS
@@ -513,7 +676,7 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
                           </span>
                           <Badge variant="secondary">{pageCount} pages</Badge>
                         </div>
-                      )
+                      );
                     })}
                   </div>
 
@@ -524,7 +687,10 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
                     </div>
                     <div className="flex items-center gap-1">
                       <Calendar className="w-3 h-3" />
-                      <span>Created {new Date(project.createdAt).toLocaleDateString()}</span>
+                      <span>
+                        Created{" "}
+                        {new Date(project.createdAt).toLocaleDateString()}
+                      </span>
                     </div>
                   </div>
 
@@ -534,12 +700,14 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
                         variant="default"
                         size="sm"
                         onClick={() => handleProjectSelect(project)}
-                        className="flex-1 gap-2"
-                      >
+                        className="flex-1 gap-2">
                         <FolderOpen className="w-4 h-4" />
                         Open Project
                       </Button>
-                      <Button variant="outline" size="sm" onClick={() => openManagePagesDialog(project)}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openManagePagesDialog(project)}>
                         <FileText className="w-4 h-4" />
                       </Button>
                     </div>
@@ -563,7 +731,9 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
               <Input
                 id="edit-title"
                 value={formData.title}
-                onChange={(e) => setFormData((prev) => ({ ...prev, title: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, title: e.target.value }))
+                }
                 placeholder="Enter project title"
               />
             </div>
@@ -573,7 +743,12 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
               <Textarea
                 id="edit-description"
                 value={formData.description}
-                onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    description: e.target.value,
+                  }))
+                }
                 placeholder="Enter project description"
                 rows={3}
               />
@@ -582,14 +757,24 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
             <div className="space-y-2">
               <Label>Translation Languages (targets)</Label>
               <div className="grid grid-cols-2 gap-2">
-                {SUPPORTED_LANGUAGES.filter((lang) => lang.code !== formData.rootLanguage).map((language) => (
-                  <div key={language.code} className="flex items-center space-x-2">
+                {SUPPORTED_LANGUAGES.filter(
+                  (lang) => lang.code !== formData.rootLanguage
+                ).map((language) => (
+                  <div
+                    key={language.code}
+                    className="flex items-center space-x-2">
                     <Checkbox
                       id={`edit-${language.code}`}
-                      checked={formData.translationLanguages.includes(language.code)}
-                      onCheckedChange={() => handleTranslationLanguageToggle(language.code)}
+                      checked={formData.translationLanguages.includes(
+                        language.code
+                      )}
+                      onCheckedChange={() =>
+                        handleTranslationLanguageToggle(language.code)
+                      }
                     />
-                    <Label htmlFor={`edit-${language.code}`} className="flex items-center gap-2">
+                    <Label
+                      htmlFor={`edit-${language.code}`}
+                      className="flex items-center gap-2">
                       <span>{language.flag}</span>
                       <span>{language.name}</span>
                     </Label>
@@ -602,11 +787,10 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
               <Button
                 variant="outline"
                 onClick={() => {
-                  setIsEditDialogOpen(false)
-                  setEditingProject(null)
-                  resetForm()
-                }}
-              >
+                  setIsEditDialogOpen(false);
+                  setEditingProject(null);
+                  resetForm();
+                }}>
                 Cancel
               </Button>
               <Button onClick={handleEditProject}>Update Project</Button>
@@ -616,7 +800,9 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
       </Dialog>
 
       {/* Manage Pages Dialog */}
-      <Dialog open={isManagePagesDialogOpen} onOpenChange={setIsManagePagesDialogOpen}>
+      <Dialog
+        open={isManagePagesDialogOpen}
+        onOpenChange={setIsManagePagesDialogOpen}>
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -626,12 +812,17 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
           </DialogHeader>
           {managingProject && (
             <div className="space-y-6">
-              {[managingProject.rootLanguage, ...managingProject.translationLanguages].map((language) => {
-                const langInfo = getLanguageInfo(language)
-                const projectPagesForLang = projectPages[language] || []
+              {[
+                managingProject.rootLanguage,
+                ...managingProject.translationLanguages,
+              ].map((language) => {
+                const langInfo = getLanguageInfo(language);
+                const projectPagesForLang = projectPages[language] || [];
                 const availablePagesForLang = allPages.filter(
-                  (page) => page.language === language && !projectPagesForLang.some((pp) => pp.id === page.id),
-                )
+                  (page) =>
+                    page.language === language &&
+                    !projectPagesForLang.some((pp) => pp.id === page.id)
+                );
 
                 return (
                   <div key={language} className="space-y-3">
@@ -645,18 +836,23 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
                         Current Pages ({projectPagesForLang.length})
                       </h4>
                       {projectPagesForLang.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">No pages added yet</p>
+                        <p className="text-sm text-muted-foreground">
+                          No pages added yet
+                        </p>
                       ) : (
                         <div className="grid gap-2">
                           {projectPagesForLang.map((page) => (
-                            <div key={page.id} className="flex items-center justify-between p-2 border rounded">
+                            <div
+                              key={page.id}
+                              className="flex items-center justify-between p-2 border rounded">
                               <span className="text-sm">{page.fileName}</span>
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => handleRemovePageFromProject(page.id, language)}
-                                className="text-destructive hover:text-destructive"
-                              >
+                                onClick={() =>
+                                  handleRemovePageFromProject(page.id, language)
+                                }
+                                className="text-destructive hover:text-destructive">
                                 Remove
                               </Button>
                             </div>
@@ -671,17 +867,22 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
                         Available Pages ({availablePagesForLang.length})
                       </h4>
                       {availablePagesForLang.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">No available pages for this language</p>
+                        <p className="text-sm text-muted-foreground">
+                          No available pages for this language
+                        </p>
                       ) : (
                         <div className="grid gap-2 max-h-40 overflow-y-auto">
                           {availablePagesForLang.map((page) => (
-                            <div key={page.id} className="flex items-center justify-between p-2 border rounded">
+                            <div
+                              key={page.id}
+                              className="flex items-center justify-between p-2 border rounded">
                               <span className="text-sm">{page.fileName}</span>
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => handleAddPageToProject(page.id, language)}
-                              >
+                                onClick={() =>
+                                  handleAddPageToProject(page.id, language)
+                                }>
                                 Add
                               </Button>
                             </div>
@@ -690,12 +891,12 @@ export function ProjectManager({ onProjectSelect }: ProjectManagerProps) {
                       )}
                     </div>
                   </div>
-                )
+                );
               })}
             </div>
           )}
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }
