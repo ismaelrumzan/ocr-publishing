@@ -52,7 +52,14 @@ export async function PUT(
     const { id } = await params;
     const { language, text } = await request.json();
 
+    console.log("=== PUT /api/page-groups/[id]/translations ===");
+    console.log("Page group ID:", id);
+    console.log("Language:", language);
+    console.log("Text length:", text.length);
+    console.log("Text preview:", text.substring(0, 100) + "...");
+
     if (!language || !text) {
+      console.log("Validation failed: missing language or text");
       return NextResponse.json(
         { error: "Language and text are required" },
         { status: 400 }
@@ -69,7 +76,10 @@ export async function PUT(
       text
     );
 
+    console.log("Update result:", updatedPageGroup ? "success" : "failed");
+
     if (!updatedPageGroup) {
+      console.log("Page group not found");
       return NextResponse.json(
         { error: "Page group not found" },
         { status: 404 }

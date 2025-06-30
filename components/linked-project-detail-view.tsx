@@ -108,15 +108,34 @@ export function LinkedProjectDetailView({
   };
 
   const handleUpdatePageText = async (pageId: string, newText: string) => {
+    console.log("=== handleUpdatePageText ===");
+    console.log("Page ID:", pageId);
+    console.log("New text length:", newText.length);
+    console.log("New text preview:", newText.substring(0, 100) + "...");
+
     try {
       // Check if this is a root page or translation
-      // Root page group IDs start with "pagegroup_", translation IDs have format "pageGroupId_languageCode"
-      const isTranslation =
-        pageId.includes("_") && !pageId.startsWith("pagegroup_");
+      // Root page group IDs: "pagegroup_1751221956560_e5kbb90os"
+      // Translation IDs: "pagegroup_1751221956560_e5kbb90os_eng"
+      // Translation IDs have an additional underscore and language code at the end
+      const underscoreCount = (pageId.match(/_/g) || []).length;
+      const isTranslation = underscoreCount >= 2; // Translation IDs have at least 2 underscores
+      console.log("Underscore count:", underscoreCount);
+      console.log("Is translation:", isTranslation);
 
       if (isTranslation) {
         // Extract page group ID and language from the translation ID
-        const [pageGroupId, language] = pageId.split("_");
+        // Translation IDs have format: "pageGroupId_languageCode"
+        // We need to split on the last underscore to get the language
+        const lastUnderscoreIndex = pageId.lastIndexOf("_");
+        const pageGroupId = pageId.substring(0, lastUnderscoreIndex);
+        const language = pageId.substring(lastUnderscoreIndex + 1);
+
+        console.log("Translation parsing:");
+        console.log("  Original pageId:", pageId);
+        console.log("  Last underscore index:", lastUnderscoreIndex);
+        console.log("  Extracted pageGroupId:", pageGroupId);
+        console.log("  Extracted language:", language);
 
         const response = await fetch(
           `/api/page-groups/${pageGroupId}/translations`,
@@ -127,20 +146,44 @@ export function LinkedProjectDetailView({
           }
         );
 
+        console.log("Translation update response status:", response.status);
+
         if (!response.ok) {
-          throw new Error("Failed to update translation");
+          const errorData = await response.json();
+          console.error("Translation update error:", errorData);
+          throw new Error(
+            `Failed to update translation: ${
+              errorData.error || response.statusText
+            }`
+          );
         }
+
+        const responseData = await response.json();
+        console.log("Translation update response:", responseData);
       } else {
         // Update root text
+        console.log("Updating root text for page group:", pageId);
+
         const response = await fetch(`/api/page-groups/${pageId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ rootText: newText }),
         });
 
+        console.log("Root text update response status:", response.status);
+
         if (!response.ok) {
-          throw new Error("Failed to update root text");
+          const errorData = await response.json();
+          console.error("Root text update error:", errorData);
+          throw new Error(
+            `Failed to update root text: ${
+              errorData.error || response.statusText
+            }`
+          );
         }
+
+        const responseData = await response.json();
+        console.log("Root text update response:", responseData);
       }
 
       await fetchLinkedPageGroups();
@@ -152,7 +195,8 @@ export function LinkedProjectDetailView({
       console.error("Error updating text:", error);
       toast({
         title: "Error",
-        description: "Failed to update text",
+        description:
+          error instanceof Error ? error.message : "Failed to update text",
         variant: "destructive",
       });
     }
