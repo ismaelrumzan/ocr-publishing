@@ -12,12 +12,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Upload, Check, Edit3, Trash2, X } from "lucide-react";
+import { Upload, Check, Edit3, Trash2, X, Camera } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import Tesseract from "tesseract.js";
 import { Label } from "@/components/ui/label";
 import { TextDisplay } from "@/components/text-display";
-import { ZoomableImage } from "@/components/ui/zoomable-image";
 import type { Project } from "@/types/project";
 import { PageTitleEditor } from "@/components/page-title-editor";
 
@@ -307,7 +306,34 @@ export function ProjectOCRScanner({
                     </div>
                   </div>
 
-                  <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center">
+                  {/* Camera Capture Button - Mobile First */}
+                  <div className="border-2 border-dashed border-blue-200 rounded-lg p-4 text-center bg-blue-50">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                      id="camera-capture"
+                      disabled={isProcessing}
+                    />
+                    <label
+                      htmlFor="camera-capture"
+                      className={`cursor-pointer block ${
+                        isProcessing ? "opacity-50 cursor-not-allowed" : ""
+                      }`}>
+                      <Camera className="w-8 h-8 mx-auto mb-2 text-blue-600" />
+                      <p className="font-medium text-blue-800 mb-1">
+                        Take Photo
+                      </p>
+                      <p className="text-xs text-blue-600">
+                        Use your camera to capture documents
+                      </p>
+                    </label>
+                  </div>
+
+                  {/* File Upload Option */}
+                  <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-4 text-center">
                     <input
                       type="file"
                       multiple
@@ -319,17 +345,15 @@ export function ProjectOCRScanner({
                     />
                     <label
                       htmlFor="project-file-upload"
-                      className={`cursor-pointer ${
+                      className={`cursor-pointer block ${
                         isProcessing ? "opacity-50 cursor-not-allowed" : ""
                       }`}>
-                      <Upload className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
-                      <p className="text-lg font-medium mb-2">
-                        {isProcessing
-                          ? "Processing..."
-                          : "Click to upload images"}
+                      <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                      <p className="font-medium mb-1">
+                        {isProcessing ? "Processing..." : "Upload Files"}
                       </p>
-                      <p className="text-sm text-muted-foreground">
-                        Upload {selectedLanguage.name} images for OCR processing
+                      <p className="text-xs text-muted-foreground">
+                        Select multiple images from your device
                       </p>
                     </label>
                   </div>
@@ -340,13 +364,20 @@ export function ProjectOCRScanner({
 
           {/* Action Buttons */}
           {pages.some((page) => page.status === "approved") && (
-            <div className="flex gap-4">
+            <div className="flex flex-col sm:flex-row gap-3">
               <Button
                 onClick={() => setPages([])}
                 variant="outline"
-                className="gap-2">
+                className="gap-2 w-full sm:w-auto">
+                <Camera className="w-4 h-4" />
+                Take More Photos
+              </Button>
+              <Button
+                onClick={() => setPages([])}
+                variant="outline"
+                className="gap-2 w-full sm:w-auto">
                 <Upload className="w-4 h-4" />
-                Upload More Images
+                Upload More Files
               </Button>
             </div>
           )}
@@ -356,20 +387,21 @@ export function ProjectOCRScanner({
             {pages.map((page) => (
               <div key={page.id} className="space-y-4">
                 {/* Page Header */}
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex-1 min-w-0">
                     <PageTitleEditor
                       title={page.title}
                       fileName={page.file.name}
                       onSave={(newTitle) => updateTitle(page.id, newTitle)}
                     />
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     {getStatusBadge(page.status)}
                     {page.status === "completed" && (
                       <Button
                         onClick={() => approvePage(page.id)}
-                        className="gap-2"
+                        className="gap-2 text-sm"
+                        size="sm"
                         disabled={savingPages.has(page.id)}>
                         {savingPages.has(page.id) ? (
                           <>
@@ -379,14 +411,14 @@ export function ProjectOCRScanner({
                         ) : (
                           <>
                             <Check className="w-4 h-4" />
-                            Save to Project
+                            Save
                           </>
                         )}
                       </Button>
                     )}
                     <Button
                       variant="ghost"
-                      size="icon"
+                      size="sm"
                       onClick={() => deletePage(page.id)}
                       className="text-destructive hover:text-destructive">
                       <Trash2 className="w-4 h-4" />
@@ -404,40 +436,38 @@ export function ProjectOCRScanner({
                   </div>
                 )}
 
-                {/* Full-Width Comparison Layout */}
+                {/* Mobile-responsive layout that stacks on small screens */}
                 {(page.status === "completed" ||
                   page.status === "approved") && (
-                  <div className="grid grid-cols-2 gap-6 min-h-[70vh]">
-                    {/* Image Panel - Left Side */}
-                    <div className="space-y-3">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6 min-h-[50vh] lg:min-h-[70vh]">
+                    {/* Image Panel */}
+                    <div className="space-y-3 order-1">
                       <div className="flex items-center gap-2">
-                        <h4 className="font-medium">Original Scan</h4>
+                        <h4 className="font-medium text-sm lg:text-base">Original Scan</h4>
                         <Badge variant="outline" className="text-xs">
                           {selectedLanguage.name}
                         </Badge>
                       </div>
-                      <div className="border rounded-lg overflow-hidden bg-muted h-full">
-                        <ZoomableImage
+                      <div className="border rounded-lg overflow-hidden bg-muted h-[40vh] lg:h-full flex items-center justify-center">
+                        <img
                           src={page.imageUrl || "/placeholder.svg"}
                           alt={`Scan of ${page.file.name}`}
-                          className="w-full h-full"
-                          showControls={true}
-                          maxZoom={3}
-                          alignTopOnFit={true}
+                          className="max-w-full max-h-full object-contain"
+                          style={{ maxHeight: "calc(40vh - 2rem)" }}
                         />
                       </div>
                     </div>
 
-                    {/* Text Panel - Right Side */}
-                    <div className="space-y-3 flex flex-col">
+                    {/* Text Panel */}
+                    <div className="space-y-3 flex flex-col order-2">
                       <div className="flex items-center gap-2">
                         <Edit3 className="w-4 h-4" />
-                        <h4 className="font-medium">Extracted Text</h4>
+                        <h4 className="font-medium text-sm lg:text-base">Extracted Text</h4>
                         {page.status === "approved" && (
                           <Badge
                             variant="default"
                             className="bg-green-600 text-xs">
-                            Saved to Project
+                            Saved
                           </Badge>
                         )}
                       </div>
@@ -448,7 +478,8 @@ export function ProjectOCRScanner({
                           direction={selectedLanguage.direction}
                           editable={page.status !== "approved"}
                           onChange={(newText) => updateText(page.id, newText)}
-                          className="h-full min-h-[calc(70vh-4rem)]"
+                          className="h-full"
+                          style={{ minHeight: "30vh" }}
                         />
                       </div>
                     </div>
@@ -460,13 +491,15 @@ export function ProjectOCRScanner({
 
           {pages.length === 0 && (
             <div className="text-center py-8">
-              <Upload className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
+              <div className="flex justify-center gap-4 mb-4">
+                <Camera className="w-12 h-12 text-blue-500" />
+                <Upload className="w-12 h-12 text-muted-foreground" />
+              </div>
               <h3 className="text-lg font-medium mb-2">
-                No images uploaded yet
+                Ready to scan documents
               </h3>
-              <p className="text-muted-foreground">
-                Upload {selectedLanguage.name} images to add pages to this
-                project
+              <p className="text-muted-foreground text-sm">
+                Take photos with your camera or upload images to add {selectedLanguage.name} pages
               </p>
             </div>
           )}
@@ -475,3 +508,7 @@ export function ProjectOCRScanner({
     </Dialog>
   );
 }
+
+// Named export for compatibility;
+// Default export
+export default ProjectOCRScanner;

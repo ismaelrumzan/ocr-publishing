@@ -600,26 +600,13 @@ export class ProjectService {
     language: string,
     translationText: string
   ): Promise<PageGroup | null> {
-    console.log("=== addTranslationToPageGroup ===");
-    console.log("Page group ID:", pageGroupId);
-    console.log("Language:", language);
-    console.log("Translation text length:", translationText.length);
-
     const pageGroup = await this.loadPageGroupFromBlob(pageGroupId);
-    console.log("Page group found:", !!pageGroup);
-
     if (!pageGroup) return null;
 
-    console.log("Current translations:", Object.keys(pageGroup.translations));
     pageGroup.translations[language] = translationText;
-    console.log("Updated translations:", Object.keys(pageGroup.translations));
-
-    const result = await this.updatePageGroup(pageGroupId, {
+    return await this.updatePageGroup(pageGroupId, {
       translations: pageGroup.translations,
     });
-
-    console.log("Update result:", result ? "success" : "failed");
-    return result;
   }
 
   async updatePageGroupRootText(
@@ -647,7 +634,6 @@ export class ProjectService {
           language: pageGroup.rootLanguage,
           editedText: pageGroup.rootText,
           status: pageGroup.status,
-          imageUrl: pageGroup.imageUrl,
         };
 
         const translations: Record<string, any> = {};
@@ -670,7 +656,9 @@ export class ProjectService {
     return { project, linkedPageGroups };
   }
 
-  async getProjectWithPages(projectId: string): Promise<{
+  async getProjectWithPages(
+    projectId: string
+  ): Promise<{
     project: Project;
     pagesByLanguage: Record<string, any[]>;
   } | null> {

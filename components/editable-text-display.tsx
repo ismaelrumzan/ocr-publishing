@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Edit3, Save, X } from "lucide-react"
+import { Edit3, Save, X, Copy, Check } from 'lucide-react'
 import { cn } from "@/lib/utils"
 
 interface EditableTextDisplayProps {
@@ -25,6 +25,22 @@ export function EditableTextDisplay({
 }: EditableTextDisplayProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editedText, setEditedText] = useState(text)
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    if (!text.trim()) return
+    
+    const prompt = "Translate the following text from classical arabic to eloquent english"
+    const textToCopy = `${prompt}\n\n${text}`
+    
+    try {
+      await navigator.clipboard.writeText(textToCopy)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy text:', err)
+    }
+  }
 
   const isArabic = language === "ara"
 
@@ -78,10 +94,22 @@ export function EditableTextDisplay({
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium">Text Content</span>
-        <Button onClick={() => setIsEditing(true)} variant="ghost" size="sm" className="gap-2">
-          <Edit3 className="w-3 h-3" />
-          Edit
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={handleCopy}
+            variant="ghost"
+            size="sm"
+            className="gap-2 min-h-[44px] min-w-[44px]"
+            disabled={!text.trim()}
+          >
+            {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+            <span className="hidden sm:inline">{copied ? "Copied!" : "Copy for ChatGPT"}</span>
+          </Button>
+          <Button onClick={() => setIsEditing(true)} variant="ghost" size="sm" className="gap-2 min-h-[44px]">
+            <Edit3 className="w-3 h-3" />
+            <span className="hidden sm:inline">Edit</span>
+          </Button>
+        </div>
       </div>
       <div
         className={cn(baseClasses, "bg-muted/50")}
