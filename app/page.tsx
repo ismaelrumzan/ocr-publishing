@@ -1,14 +1,13 @@
 "use client"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Upload, Languages } from "lucide-react"
+import { Upload, Languages } from 'lucide-react'
 import { useToast } from "@/hooks/use-toast"
 import { useApprovedTexts } from "@/contexts/approved-texts-context"
 import { ProjectManager } from "@/components/project-manager"
 import Link from "next/link"
 import { StandaloneOCRDialog } from "@/components/standalone-ocr-dialog"
 import type { Project } from "@/types/project"
-import { DemoBanner } from "@/components/demo-banner"
 
 export default function HomePage() {
   const { toast } = useToast()
@@ -53,8 +52,6 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Demo Banner */}
-      <DemoBanner />
 
       {/* Project Manager */}
       <ProjectManager onProjectSelect={handleProjectSelect} />
